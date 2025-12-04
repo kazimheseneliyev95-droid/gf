@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search } from 'lucide-react';
-import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
+import { 
+  LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, 
+  ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, 
+  CheckSquare, Heart, Filter, Search, AlertTriangle, Image as ImageIcon, Box
+} from 'lucide-react';
+import { 
+  JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, 
+  JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY,
+  MaterialsType, AdminSettings
+} from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
-import { createNotification, getWorkerAverageRating } from './utils';
+import { createNotification, getWorkerAverageRating, getAdminSettings } from './utils';
 
 export default function EmployerPanel() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
   
+  // Settings (Features)
+  const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
+
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -18,6 +29,10 @@ export default function EmployerPanel() {
   const [days, setDays] = useState('');
   const [category, setCategory] = useState<JobCategory>('Other');
   const [tags, setTags] = useState('');
+  // New Form Fields
+  const [isAuction, setIsAuction] = useState(false);
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [materials, setMaterials] = useState<MaterialsType>('Not needed');
   
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -44,6 +59,9 @@ export default function EmployerPanel() {
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
 
+  // Comparison Modal
+  const [comparisonJobId, setComparisonJobId] = useState<string | null>(null);
+
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
     if (!sessionStr) {
@@ -59,6 +77,7 @@ export default function EmployerPanel() {
       setCurrentUser(user);
       loadMyJobs(user.username);
       loadFavorites(user.username);
+      setSettings(getAdminSettings());
     } catch (e) {
       navigate('/');
     }
@@ -122,8 +141,13 @@ export default function EmployerPanel() {
 
     if (!currentUser) return;
 
-    if (!title || !description || !budget || !address || !days) {
-      setError('Please fill in all fields.');
+    // Validate: Budget is optional if Auction
+    if (!title || !description || !address || !days) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+    if (!isAuction && !budget) {
+      setError('Budget is required for fixed price jobs.');
       return;
     }
 
@@ -132,14 +156,18 @@ export default function EmployerPanel() {
       employerUsername: currentUser.username,
       title,
       description,
-      budget: Number(budget),
+      budget: budget ? Number(budget) : 0,
       address,
       daysToComplete: Number(days),
       createdAt: new Date().toISOString(),
       applications: [],
       status: 'open',
       category,
-      tags: tags.split(',').map(t => t.trim()).filter(t => t)
+      tags: tags.split(',').map(t => t.trim()).filter(t => t),
+      // New Fields
+      isAuction,
+      media: mediaUrl ? [mediaUrl] : [],
+      materials
     };
 
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
@@ -149,6 +177,7 @@ export default function EmployerPanel() {
 
     setMyJobs([newJob, ...myJobs]);
     setTitle(''); setDescription(''); setBudget(''); setAddress(''); setDays(''); setTags('');
+    setMediaUrl(''); setIsAuction(false);
     setSuccess('Job posted successfully.');
     setTimeout(() => setSuccess(''), 3000);
   };
@@ -178,6 +207,7 @@ export default function EmployerPanel() {
     // CRITICAL: Move job status to processing
     allJobs[jobIndex].status = 'processing';
     allJobs[jobIndex].assignedWorkerUsername = workerUsername;
+    allJobs[jobIndex].progress = 'not_started'; // Initialize progress
 
     allJobs[jobIndex].applications = allJobs[jobIndex].applications.map(app => {
       if (app.id === applicationId) {
@@ -213,7 +243,7 @@ export default function EmployerPanel() {
   };
 
   const handleCompleteJob = (jobId: string, workerUsername: string) => {
-    if (!confirm("Mark this job as completed? You will be asked to rate the worker.")) return;
+    if (!confirm("Approve completion? You will be asked to rate the worker.")) return;
 
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (!allJobsStr) return;
@@ -225,6 +255,7 @@ export default function EmployerPanel() {
 
     allJobs[jobIndex].status = 'completed';
     allJobs[jobIndex].completedAt = new Date().toISOString();
+    allJobs[jobIndex].progress = 'finished';
 
     localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
     if (currentUser) loadMyJobs(currentUser.username);
@@ -232,6 +263,7 @@ export default function EmployerPanel() {
     setRatingModal({ isOpen: true, jobId, workerUsername });
     setRatingValue(0);
     setRatingComment('');
+    createNotification(workerUsername, 'jobCompleted', jobId, { employerName: currentUser?.username });
   };
 
   const handleSubmitReview = () => {
@@ -286,7 +318,7 @@ export default function EmployerPanel() {
 
   if (!currentUser) return null;
 
-  const filteredJobs = myJobs.filter(j => filterStatus === 'all' || j.status === filterStatus);
+  const filteredJobs = myJobs.filter(j => filterStatus === 'all' || j.status === filterStatus || (filterStatus === 'processing' && j.status === 'awaiting_approval'));
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
@@ -366,12 +398,30 @@ export default function EmployerPanel() {
                   </select>
                 </div>
 
+                {/* New: Auction Toggle */}
+                <div className="flex items-center gap-2 bg-purple-50 p-2 rounded-lg border border-purple-100">
+                  <input 
+                    type="checkbox" 
+                    id="auction" 
+                    checked={isAuction} 
+                    onChange={e => setIsAuction(e.target.checked)} 
+                    className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
+                  />
+                  <label htmlFor="auction" className="text-sm font-medium text-purple-900 cursor-pointer">Enable Auction Mode (Open Bidding)</label>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">Budget (₼)</label>
                     <div className="relative">
                       <DollarSign className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                      <input type="number" placeholder="150" value={budget} onChange={e => setBudget(e.target.value)} className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <input 
+                        type="number" 
+                        placeholder={isAuction ? "Optional" : "150"} 
+                        value={budget} 
+                        onChange={e => setBudget(e.target.value)} 
+                        className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                      />
                     </div>
                   </div>
                   <div>
@@ -388,6 +438,24 @@ export default function EmployerPanel() {
                   <div className="relative">
                     <MapPin className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
                     <input type="text" placeholder="City / Area" value={address} onChange={e => setAddress(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  </div>
+                </div>
+
+                {/* New: Materials & Media */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Materials</label>
+                  <select value={materials} onChange={e => setMaterials(e.target.value as MaterialsType)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="Not needed">Not needed</option>
+                    <option value="Provided by employer">Provided by employer</option>
+                    <option value="Provided by worker">Provided by worker</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Media URL (Image/Video)</label>
+                  <div className="relative">
+                    <ImageIcon className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
+                    <input type="text" placeholder="https://..." value={mediaUrl} onChange={e => setMediaUrl(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
                 </div>
 
@@ -461,7 +529,7 @@ export default function EmployerPanel() {
                 {filteredJobs.map((job) => (
                   <div key={job.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
                     job.status === 'completed' ? 'border-gray-200 opacity-90' : 
-                    job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
+                    job.status === 'processing' || job.status === 'awaiting_approval' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
                   }`}>
                     <div className="p-5">
                       <div className="flex justify-between items-start">
@@ -469,9 +537,12 @@ export default function EmployerPanel() {
                           <div className="flex items-center gap-2">
                             <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
                             <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
-                            {job.status === 'processing' && (
+                            {job.isAuction && (
+                              <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">Auction</span>
+                            )}
+                            {(job.status === 'processing' || job.status === 'awaiting_approval') && (
                               <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                                <PlayCircle size={10} /> Processing
+                                <PlayCircle size={10} /> {job.status === 'awaiting_approval' ? 'Awaiting Approval' : 'Processing'}
                               </span>
                             )}
                             {job.status === 'completed' && (
@@ -480,22 +551,25 @@ export default function EmployerPanel() {
                               </span>
                             )}
                           </div>
-                          <div className="text-blue-600 font-bold text-xl mt-1">{job.budget} ₼</div>
+                          <div className="text-blue-600 font-bold text-xl mt-1">{job.budget > 0 ? `${job.budget} ₼` : 'Open Bid'}</div>
                         </div>
                         <button onClick={() => handleDeleteJob(job.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={18} /></button>
                       </div>
                       
                       <p className="text-sm text-gray-600 mt-2 line-clamp-2">{job.description}</p>
 
-                      <div className="flex gap-4 mt-3 text-sm text-gray-600">
+                      <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-600">
                         <span className="flex items-center gap-1"><MapPin size={14} /> {job.address}</span>
                         <span className="flex items-center gap-1"><Clock size={14} /> {job.daysToComplete} days</span>
+                        {job.materials && job.materials !== 'Not needed' && (
+                          <span className="flex items-center gap-1"><Box size={14} /> {job.materials}</span>
+                        )}
                       </div>
 
                       {/* Job Actions */}
                       <div className="mt-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          {/* View Offers Button - Only show if not completed or if user wants to see history */}
+                          {/* View Offers Button */}
                           <button 
                             onClick={() => toggleApplications(job.id)}
                             className={`flex items-center gap-2 text-sm font-medium transition-colors ${
@@ -508,8 +582,8 @@ export default function EmployerPanel() {
                               : 'No Offers Yet'}
                           </button>
                           
-                          {/* Chat Button - Show for processing or completed jobs */}
-                          {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
+                          {/* Chat Button */}
+                          {(job.status === 'processing' || job.status === 'awaiting_approval' || job.status === 'completed') && job.assignedWorkerUsername && (
                             <ChatPanel 
                               jobId={job.id} 
                               currentUsername={currentUser.username} 
@@ -521,12 +595,12 @@ export default function EmployerPanel() {
                         </div>
 
                         {/* Complete Job Button */}
-                        {job.status === 'processing' && job.assignedWorkerUsername && (
+                        {job.status === 'awaiting_approval' && job.assignedWorkerUsername && (
                           <button
                             onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 transition-colors shadow-sm"
+                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 transition-colors shadow-sm animate-pulse"
                           >
-                            <CheckSquare size={14} /> Mark as Completed
+                            <CheckSquare size={14} /> Approve Completion
                           </button>
                         )}
                         
@@ -543,7 +617,17 @@ export default function EmployerPanel() {
                     {expandedJobId === job.id && (
                       <div className="bg-gray-50 border-t border-gray-100 p-4 animate-in slide-in-from-top-2">
                         <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Worker Offers</h4>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Worker Offers</h4>
+                            {settings.workerComparison && job.applications.length > 1 && (
+                              <button 
+                                onClick={() => setComparisonJobId(job.id)}
+                                className="text-xs text-blue-600 hover:underline font-medium"
+                              >
+                                Compare Workers
+                              </button>
+                            )}
+                          </div>
                           
                           {/* Offer Filters */}
                           <div className="flex gap-2">
@@ -577,65 +661,82 @@ export default function EmployerPanel() {
                                 }
                                 return true;
                               })
-                              .map((app) => (
-                              <div key={app.id} className={`bg-white p-4 rounded-lg border shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 ${
-                                app.status === 'accepted' ? 'border-green-200 ring-1 ring-green-100' : 'border-gray-200'
-                              } ${app.status === 'rejected' ? 'opacity-60 bg-gray-50' : ''}`}>
-                                
-                                <div className="flex items-center gap-3 w-full sm:w-auto">
-                                  <div className={`p-2 rounded-full ${
-                                    app.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
-                                  }`}>
-                                    <User size={16} />
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <Link 
-                                        to={`/worker/${app.workerUsername}`}
-                                        className="text-sm font-bold text-gray-900 hover:text-blue-600 hover:underline"
-                                      >
-                                        {app.workerUsername}
-                                      </Link>
-                                      {app.status === 'accepted' && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ACCEPTED</span>}
-                                      {app.status === 'rejected' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">REJECTED</span>}
-                                    </div>
-                                    <p className="text-xs text-gray-500">{new Date(app.createdAt).toLocaleString()}</p>
-                                    {app.message && <p className="text-xs text-gray-600 mt-1 italic">"{app.message}"</p>}
-                                  </div>
-                                </div>
+                              .map((app) => {
+                                const workerRating = getWorkerAverageRating(app.workerUsername);
+                                const isRisky = settings.riskAlerts && workerRating > 0 && workerRating < 3;
 
-                                <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                                  <div className="text-right">
-                                    <span className="block text-lg font-bold text-blue-600">{app.offeredPrice} ₼</span>
-                                    <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
-                                  </div>
+                                return (
+                                  <div key={app.id} className={`bg-white p-4 rounded-lg border shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 ${
+                                    app.status === 'accepted' ? 'border-green-200 ring-1 ring-green-100' : 'border-gray-200'
+                                  } ${app.status === 'rejected' ? 'opacity-60 bg-gray-50' : ''}`}>
+                                    
+                                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                                      <div className={`p-2 rounded-full ${
+                                        app.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                                      }`}>
+                                        <User size={16} />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <Link 
+                                            to={`/worker/${app.workerUsername}`}
+                                            className="text-sm font-bold text-gray-900 hover:text-blue-600 hover:underline"
+                                          >
+                                            {app.workerUsername}
+                                          </Link>
+                                          {workerRating > 0 && (
+                                            <span className="text-xs text-amber-500 flex items-center gap-0.5">
+                                              <Star size={10} fill="currentColor" /> {workerRating.toFixed(1)}
+                                            </span>
+                                          )}
+                                          {app.status === 'accepted' && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ACCEPTED</span>}
+                                          {app.status === 'rejected' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">REJECTED</span>}
+                                        </div>
+                                        <p className="text-xs text-gray-500">{new Date(app.createdAt).toLocaleString()}</p>
+                                        {app.message && <p className="text-xs text-gray-600 mt-1 italic">"{app.message}"</p>}
+                                        {app.estimatedDuration && <p className="text-xs text-blue-600 mt-0.5">Est. Duration: {app.estimatedDuration}</p>}
+                                        
+                                        {isRisky && (
+                                          <div className="flex items-center gap-1 text-xs text-red-600 mt-1 font-medium">
+                                            <AlertTriangle size={12} /> Low reliability score detected
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
 
-                                  {/* Action Buttons */}
-                                  {job.status === 'open' && app.status === 'pending' && (
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() => handleRejectOffer(job.id, app.id, app.workerUsername)}
-                                        className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 text-xs font-bold px-3 py-2 rounded-lg transition-colors"
-                                      >
-                                        Reject
-                                      </button>
-                                      <button
-                                        onClick={() => handleAcceptOffer(job.id, app.id, app.workerUsername)}
-                                        className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1"
-                                      >
-                                        <CheckCircle size={14} /> Accept
-                                      </button>
+                                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                                      <div className="text-right">
+                                        <span className="block text-lg font-bold text-blue-600">{app.offeredPrice} ₼</span>
+                                        <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
+                                      </div>
+
+                                      {/* Action Buttons */}
+                                      {job.status === 'open' && app.status === 'pending' && (
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => handleRejectOffer(job.id, app.id, app.workerUsername)}
+                                            className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+                                          >
+                                            Reject
+                                          </button>
+                                          <button
+                                            onClick={() => handleAcceptOffer(job.id, app.id, app.workerUsername)}
+                                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1"
+                                          >
+                                            <CheckCircle size={14} /> Accept
+                                          </button>
+                                        </div>
+                                      )}
+                                      
+                                      {app.status === 'accepted' && (
+                                        <div className="text-green-600 flex items-center gap-1 text-xs font-bold bg-green-50 px-3 py-2 rounded-lg">
+                                          <CheckCircle size={14} /> Selected
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                  
-                                  {app.status === 'accepted' && (
-                                    <div className="text-green-600 flex items-center gap-1 text-xs font-bold bg-green-50 px-3 py-2 rounded-lg">
-                                      <CheckCircle size={14} /> Selected
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            ))}
+                                  </div>
+                                );
+                              })}
                           </div>
                         )}
                       </div>
@@ -688,6 +789,58 @@ export default function EmployerPanel() {
                 >
                   Submit Review
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Comparison Modal (Feature Toggle) */}
+        {comparisonJobId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl p-6 animate-in zoom-in-95 duration-200 overflow-x-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-gray-900">Compare Workers</h3>
+                <button onClick={() => setComparisonJobId(null)} className="text-gray-400 hover:text-gray-600"><XCircle size={24} /></button>
+              </div>
+
+              <div className="flex gap-4 pb-4">
+                {myJobs.find(j => j.id === comparisonJobId)?.applications.map(app => {
+                  const rating = getWorkerAverageRating(app.workerUsername);
+                  return (
+                    <div key={app.id} className="min-w-[200px] bg-gray-50 p-4 rounded-xl border border-gray-200 flex flex-col gap-3">
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-2 font-bold text-xl">
+                          {app.workerUsername[0].toUpperCase()}
+                        </div>
+                        <h4 className="font-bold text-gray-900">{app.workerUsername}</h4>
+                        <div className="flex justify-center text-amber-400 text-xs gap-0.5 mt-1">
+                          {[1, 2, 3, 4, 5].map(s => <Star key={s} size={10} fill={s <= rating ? "currentColor" : "none"} />)}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between border-b border-gray-200 pb-1">
+                          <span className="text-gray-500">Price</span>
+                          <span className="font-bold text-blue-600">{app.offeredPrice} ₼</span>
+                        </div>
+                        <div className="flex justify-between border-b border-gray-200 pb-1">
+                          <span className="text-gray-500">Duration</span>
+                          <span className="font-medium">{app.estimatedDuration || 'N/A'}</span>
+                        </div>
+                      </div>
+
+                      <button 
+                        onClick={() => {
+                          handleAcceptOffer(comparisonJobId, app.id, app.workerUsername);
+                          setComparisonJobId(null);
+                        }}
+                        className="mt-auto w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2 rounded-lg"
+                      >
+                        Accept Offer
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </div>

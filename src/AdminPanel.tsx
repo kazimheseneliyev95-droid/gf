@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, Users, Briefcase, FileText, MessageSquare, Bell, Settings, 
-  Shield, Search, Trash2, CheckCircle, XCircle, Lock, Unlock, BarChart2
+  Shield, Search, Trash2, CheckCircle, XCircle, Lock, Unlock, BarChart2,
+  ToggleLeft, ToggleRight, AlertTriangle
 } from 'lucide-react';
 import { 
   User, JobPost, JobApplication, WorkerReview, JobMessage, Notification,
-  USERS_STORAGE_KEY, JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, MESSAGE_STORAGE_KEY, NOTIFICATION_KEY
+  USERS_STORAGE_KEY, JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, MESSAGE_STORAGE_KEY, NOTIFICATION_KEY,
+  ADMIN_SETTINGS_KEY, AdminSettings
 } from './types';
 import AdminAnalytics from './components/AdminAnalytics';
+import { getAdminSettings } from './utils';
 
 type AdminTab = 'dashboard' | 'analytics' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'settings';
 
@@ -22,6 +25,9 @@ export default function AdminPanel() {
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  
+  // Settings State
+  const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
 
   // Search States
   const [userSearch, setUserSearch] = useState('');
@@ -92,6 +98,12 @@ export default function AdminPanel() {
   const handleLogout = () => {
     localStorage.removeItem('currentUser');
     navigate('/');
+  };
+
+  const toggleSetting = (key: keyof AdminSettings) => {
+    const newSettings = { ...settings, [key]: !settings[key] };
+    setSettings(newSettings);
+    localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(newSettings));
   };
 
   // Stats
@@ -289,7 +301,12 @@ export default function AdminPanel() {
               {filteredJobs.map(job => (
                 <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
                   <div>
-                    <h3 className="font-bold text-gray-900">{job.title}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-gray-900">{job.title}</h3>
+                      {job.isAuction && (
+                        <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full">AUCTION</span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-500">Employer: {job.employerUsername} • Status: {job.status}</p>
                     <p className="text-xs text-gray-400 mt-1">ID: {job.id}</p>
                   </div>
@@ -439,10 +456,47 @@ export default function AdminPanel() {
         )}
 
         {activeTab === 'settings' && (
-          <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="space-y-8 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-gray-900">System Settings</h2>
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-lg text-gray-800 mb-4">Danger Zone</h3>
+            
+            {/* Feature Toggles */}
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+              <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
+                <ToggleLeft className="text-blue-600" /> Feature Toggles
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">Enable or disable advanced marketplace features.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {Object.entries(settings).map(([key, value]) => (
+                  <div key={key} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <div>
+                      <p className="font-semibold text-gray-700 capitalize">
+                        {key.replace(/([A-Z])/g, ' $1').trim()}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {value ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => toggleSetting(key as keyof AdminSettings)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        value ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        value ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-red-100">
+              <h3 className="font-bold text-lg text-red-600 mb-4 flex items-center gap-2">
+                <AlertTriangle /> Danger Zone
+              </h3>
               <p className="text-gray-600 mb-6 text-sm">
                 Resetting the database will clear ALL users (except admin), jobs, offers, messages, and reviews. 
                 This action cannot be undone.

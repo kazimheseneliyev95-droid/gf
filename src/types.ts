@@ -19,11 +19,14 @@ export type JobApplication = {
   workerUsername: string;
   offeredPrice: number;
   message?: string;
+  estimatedDuration?: string; // New: Worker estimation
   createdAt: string;
   status: ApplicationStatus;
 };
 
-export type JobStatus = 'open' | 'processing' | 'completed';
+export type JobStatus = 'open' | 'processing' | 'completed' | 'awaiting_approval';
+
+export type JobProgress = 'not_started' | 'started' | 'finished';
 
 export type JobCategory = 
   | "Plumbing"
@@ -32,6 +35,8 @@ export type JobCategory =
   | "Cleaning"
   | "Carpentry"
   | "Other";
+
+export type MaterialsType = "Provided by employer" | "Provided by worker" | "Not needed";
 
 export type JobPost = {
   id: string;
@@ -50,6 +55,13 @@ export type JobPost = {
   
   category: JobCategory;
   tags?: string[];
+
+  // New Fields
+  isAuction?: boolean;
+  media?: string[]; // Array of URLs
+  materials?: MaterialsType;
+  progress?: JobProgress; // For tracking Start -> Finish
+  progressStartedAt?: string;
 };
 
 export type WorkerReview = {
@@ -62,10 +74,26 @@ export type WorkerReview = {
   createdAt: string;
 };
 
+export type WorkerAvailability = 'Available' | 'Busy' | 'Available in 24h' | 'Available in 48h';
+
 export type WorkerProfileData = {
   username: string;
   skills: string[];
   bio?: string;
+  experience?: number; // Years
+  portfolio?: string[]; // Image URLs
+  availability?: WorkerAvailability;
+  
+  // Onboarding Data
+  city?: string;
+  priceLevel?: 'Low' | 'Medium' | 'High';
+  onboardingCompleted?: boolean;
+};
+
+export type EmployerProfileData = {
+  username: string;
+  preferredCategories: string[];
+  onboardingCompleted?: boolean;
 };
 
 export type JobMessage = {
@@ -85,7 +113,9 @@ export type NotificationType =
   | "newOffer"
   | "offerAccepted"
   | "offerRejected"
-  | "newMessage";
+  | "newMessage"
+  | "jobStarted"
+  | "jobCompleted";
 
 export type Notification = {
   id: string;
@@ -103,14 +133,28 @@ export type FavoriteWorker = {
   addedAt: string;
 };
 
+// Admin Feature Toggles
+export type AdminSettings = {
+  workerComparison: boolean;
+  riskAlerts: boolean;
+  smartMatching: boolean;
+  locationMatching: boolean;
+  premiumBadges: boolean;
+  behavioralMonitoring: boolean;
+  ltvAnalytics: boolean;
+};
+
 // Storage Keys
 export const JOB_STORAGE_KEY = 'jobPosts';
 export const REVIEW_STORAGE_KEY = 'workerReviews';
 export const WORKER_PROFILE_KEY = 'workerProfiles';
+export const EMPLOYER_PROFILE_KEY = 'employerProfiles'; // New
 export const MESSAGE_STORAGE_KEY = 'jobMessages';
 export const NOTIFICATION_KEY = 'notifications';
 export const FAVORITE_WORKERS_KEY = 'favoriteWorkers';
 export const USERS_STORAGE_KEY = 'users';
+export const ADMIN_SETTINGS_KEY = 'adminSettings';
+export const LAST_SESSION_KEY = 'lastSession'; // New
 
 export const JOB_CATEGORIES: JobCategory[] = [
   "Plumbing", "Electric", "Painting", "Cleaning", "Carpentry", "Other"

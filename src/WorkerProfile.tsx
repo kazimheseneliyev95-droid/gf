@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase } from 'lucide-react';
-import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
+import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase, Clock, Award, ShieldCheck } from 'lucide-react';
+import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, ADMIN_SETTINGS_KEY, AdminSettings } from './types';
+import { getAdminSettings } from './utils';
 
 export default function WorkerProfile() {
   const { username } = useParams<{ username: string }>();
@@ -13,12 +14,14 @@ export default function WorkerProfile() {
   
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
     if (sessionStr) {
       setCurrentUser(JSON.parse(sessionStr));
     }
+    setSettings(getAdminSettings());
   }, []);
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export default function WorkerProfile() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Back Button */}
         <button 
@@ -91,64 +94,108 @@ export default function WorkerProfile() {
         </button>
 
         {/* Profile Header */}
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-blue-500 to-purple-600 opacity-10"></div>
+        <div className="bg-white rounded-xl shadow-sm p-8 relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-r from-blue-600 to-purple-600 opacity-10"></div>
           
-          <div className="relative">
-            <div className="w-24 h-24 bg-white border-4 border-white shadow-lg text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <User size={48} />
+          <div className="relative flex flex-col md:flex-row items-center md:items-start gap-6">
+            <div className="w-32 h-32 bg-white border-4 border-white shadow-lg text-blue-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <User size={64} />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">{username}</h1>
             
-            {/* Skills */}
-            {profileData && profileData.skills.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-2 mb-4">
-                {profileData.skills.map(skill => (
-                  <span key={skill} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
-                    {skill}
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex flex-col md:flex-row items-center gap-3 mb-2">
+                <h1 className="text-3xl font-bold text-gray-900">{username}</h1>
+                {profileData?.availability && (
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
+                    profileData.availability === 'Available' ? 'bg-green-100 text-green-700' :
+                    profileData.availability === 'Busy' ? 'bg-red-100 text-red-700' :
+                    'bg-yellow-100 text-yellow-700'
+                  }`}>
+                    {profileData.availability}
                   </span>
-                ))}
+                )}
               </div>
-            )}
 
-            <div className="flex items-center justify-center gap-2 mb-4">
-              <div className="flex text-amber-400">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star 
-                    key={star} 
-                    size={20} 
-                    fill={averageRating && star <= Math.round(averageRating) ? "currentColor" : "none"} 
-                    className={averageRating && star <= Math.round(averageRating) ? "" : "text-gray-300"}
-                  />
-                ))}
+              {/* Stats Row */}
+              <div className="flex flex-wrap justify-center md:justify-start gap-4 mb-4 text-sm text-gray-600">
+                <div className="flex items-center gap-1">
+                  <Star className="text-amber-400" size={16} fill="currentColor" />
+                  <span className="font-bold text-gray-900">{averageRating ? averageRating.toFixed(1) : 'N/A'}</span>
+                  <span>({reviews.length} reviews)</span>
+                </div>
+                {profileData?.experience && (
+                  <div className="flex items-center gap-1">
+                    <Briefcase size={16} />
+                    <span>{profileData.experience} Years Exp.</span>
+                  </div>
+                )}
               </div>
-              <span className="text-lg font-bold text-gray-800">
-                {averageRating ? averageRating.toFixed(1) : 'N/A'}
-              </span>
-              <span className="text-gray-400 text-sm">({reviews.length} reviews)</span>
+
+              {/* Bio */}
+              {profileData?.bio && (
+                <p className="text-gray-600 italic mb-4 max-w-xl">"{profileData.bio}"</p>
+              )}
+
+              {/* Skills */}
+              {profileData && profileData.skills.length > 0 && (
+                <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-6">
+                  {profileData.skills.map(skill => (
+                    <span key={skill} className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs font-medium">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Badges (Toggle) */}
+              {settings.premiumBadges && (
+                <div className="flex gap-2 mb-6">
+                  {averageRating && averageRating >= 4.5 && (
+                    <span className="flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-1 rounded border border-amber-200 text-xs font-bold">
+                      <Award size={14} /> Top Rated
+                    </span>
+                  )}
+                  {reviews.length > 5 && (
+                    <span className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 text-xs font-bold">
+                      <ShieldCheck size={14} /> Verified Pro
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Favorite Button */}
+              {currentUser?.role === 'employer' && (
+                <button 
+                  onClick={toggleFavorite}
+                  className={`flex items-center gap-2 px-6 py-2 rounded-full font-medium transition-all ${
+                    isFavorite 
+                      ? 'bg-red-50 text-red-600 border border-red-200' 
+                      : 'bg-gray-900 text-white hover:bg-gray-800'
+                  }`}
+                >
+                  <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
+                  {isFavorite ? 'Saved to Favorites' : 'Add to Favorites'}
+                </button>
+              )}
             </div>
-
-            {/* Bio */}
-            {profileData?.bio && (
-              <p className="text-gray-600 max-w-lg mx-auto italic mb-6">"{profileData.bio}"</p>
-            )}
-
-            {/* Favorite Button (Employer Only) */}
-            {currentUser?.role === 'employer' && (
-              <button 
-                onClick={toggleFavorite}
-                className={`flex items-center gap-2 px-6 py-2 rounded-full font-medium transition-all mx-auto ${
-                  isFavorite 
-                    ? 'bg-red-50 text-red-600 border border-red-200' 
-                    : 'bg-gray-900 text-white hover:bg-gray-800'
-                }`}
-              >
-                <Heart size={18} fill={isFavorite ? "currentColor" : "none"} />
-                {isFavorite ? 'Saved to Favorites' : 'Add to Favorites'}
-              </button>
-            )}
           </div>
         </div>
+
+        {/* Portfolio Section */}
+        {profileData?.portfolio && profileData.portfolio.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <Briefcase className="text-blue-500" /> Portfolio
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {profileData.portfolio.map((url, idx) => (
+                <div key={idx} className="aspect-square rounded-lg overflow-hidden bg-gray-100 border border-gray-200 hover:shadow-md transition-all cursor-pointer">
+                  <img src={url} alt={`Portfolio ${idx}`} className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Reviews List */}
         <div className="space-y-4">
@@ -167,7 +214,7 @@ export default function WorkerProfile() {
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-2">
                     <div className="bg-gray-100 p-1.5 rounded-full">
-                      <Briefcase size={14} className="text-gray-500" />
+                      <User size={14} className="text-gray-500" />
                     </div>
                     <span className="font-semibold text-gray-900 text-sm">{review.employerUsername}</span>
                   </div>

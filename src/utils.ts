@@ -1,4 +1,4 @@
-import { NOTIFICATION_KEY, Notification, NotificationType, MESSAGE_STORAGE_KEY, JobMessage, REVIEW_STORAGE_KEY, WorkerReview, USERS_STORAGE_KEY, User } from './types';
+import { NOTIFICATION_KEY, Notification, NotificationType, MESSAGE_STORAGE_KEY, JobMessage, REVIEW_STORAGE_KEY, WorkerReview, USERS_STORAGE_KEY, User, ADMIN_SETTINGS_KEY, AdminSettings } from './types';
 
 export const initializeAdmin = () => {
   const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
@@ -18,6 +18,22 @@ export const initializeAdmin = () => {
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
     console.log('Admin user initialized');
   }
+};
+
+export const getAdminSettings = (): AdminSettings => {
+  const settingsStr = localStorage.getItem(ADMIN_SETTINGS_KEY);
+  if (settingsStr) return JSON.parse(settingsStr);
+  
+  // Default Settings
+  return {
+    workerComparison: false,
+    riskAlerts: false,
+    smartMatching: false,
+    locationMatching: false,
+    premiumBadges: false,
+    behavioralMonitoring: false,
+    ltvAnalytics: false
+  };
 };
 
 export const createNotification = (
