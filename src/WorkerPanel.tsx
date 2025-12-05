@@ -4,7 +4,7 @@ import {
   LogOut, HardHat, MapPin, Clock, DollarSign, Send, User, 
   CheckCircle, XCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, Trash2, 
-  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell, Plus, Zap
+  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell, Plus, Zap, Eye, Info, Home
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
@@ -27,6 +27,7 @@ import DisputeModal from './components/DisputeModal';
 import PremiumBadge from './components/PremiumBadge';
 import CompletionModal from './components/CompletionModal';
 import EmployerProfileModal from './components/EmployerProfileModal';
+import JobDetailsModal from './components/JobDetailsModal';
 
 type Tab = 'available' | 'recommended' | 'saved' | 'offers' | 'progress' | 'completed';
 
@@ -80,6 +81,9 @@ export default function WorkerPanel() {
   });
   const [employerProfileModal, setEmployerProfileModal] = useState<{isOpen: boolean, username: string | null}>({
     isOpen: false, username: null
+  });
+  const [viewJobModal, setViewJobModal] = useState<{isOpen: boolean, job: JobPost | null}>({
+    isOpen: false, job: null
   });
 
 
@@ -365,6 +369,20 @@ export default function WorkerPanel() {
     loadData(currentUser.username); 
   };
 
+  const updateAvailabilityStatus = (status: 'available' | 'busy') => {
+    if (!currentUser) return;
+    const newProfile = { ...profileData, availabilityStatus: status };
+    setProfileData(newProfile);
+    
+    const allProfilesStr = localStorage.getItem(WORKER_PROFILE_KEY);
+    const allProfiles: WorkerProfileData[] = allProfilesStr ? JSON.parse(allProfilesStr) : [];
+    const updatedProfiles = allProfiles.filter(p => p.username !== currentUser.username);
+    updatedProfiles.push({ ...newProfile, username: currentUser.username });
+    localStorage.setItem(WORKER_PROFILE_KEY, JSON.stringify(updatedProfiles));
+    
+    logActivity(currentUser.username, 'worker', 'AVAILABILITY_UPDATED', { status });
+  };
+
   const addSkill = () => {
     const val = skillInput.trim();
     if (!val) return;
@@ -509,6 +527,10 @@ export default function WorkerPanel() {
                   Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
                 </p>
                 <span className="text-gray-300">|</span>
+                <Link to="/home" className="text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
+                  <Home size={14} /> Home Feed
+                </Link>
+                <span className="text-gray-300">|</span>
                 <button 
                   onClick={() => setIsEditingProfile(true)}
                   className={`font-medium hover:underline ${
@@ -518,10 +540,19 @@ export default function WorkerPanel() {
                   Profile: {profileStrengthScore > 70 ? 'Strong' : profileStrengthScore > 30 ? 'Good' : 'Weak'} ({profileStrengthScore}%)
                 </button>
                 <span className="text-gray-300">|</span>
-                <div className="flex items-center gap-1">
-                   <div className={`w-2 h-2 rounded-full ${profileData.availabilityStatus === 'available' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                   <span className="text-gray-600">{profileData.availabilityStatus === 'available' ? 'Available' : 'Busy'}</span>
-                </div>
+                
+                {/* Status Indicator */}
+                {profileData.availabilityStatus === 'available' ? (
+                   <div className="flex items-center gap-1 bg-green-50 px-2 py-0.5 rounded-full border border-green-100">
+                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                     <span className="text-green-700 text-xs font-bold">Available</span>
+                   </div>
+                ) : (
+                   <div className="flex items-center gap-1 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200">
+                     <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                     <span className="text-gray-600 text-xs font-bold">Busy</span>
+                   </div>
+                )}
                 
                 <GamificationBadges badges={badges} />
                 {showPremium && <PremiumBadge username={currentUser.username} role="worker" />}
@@ -576,10 +607,27 @@ export default function WorkerPanel() {
           {/* Availability & Strength */}
           <div className="lg:col-span-1 space-y-4">
             <AvailabilityScheduler username={currentUser.username} />
+            
+            {/* Professional Busy State Panel */}
             {profileData.availabilityStatus === 'busy' && (
-              <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-xs text-gray-600 flex items-center gap-2">
-                <Clock size={14} className="text-gray-400" />
-                You are currently <strong>Busy</strong>. Switch to Available to receive more offers.
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-sm flex flex-col gap-3 animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-amber-100 rounded-full text-amber-600">
+                    <ClockIcon size={18} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-amber-900 text-sm">You are currently Busy</h4>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Switching to "Available" helps you get more relevant job offers and appear in search results.
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => updateAvailabilityStatus('available')}
+                  className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
+                >
+                  Set to Available
+                </button>
               </div>
             )}
           </div>
@@ -663,6 +711,13 @@ export default function WorkerPanel() {
                   </div>
                 )}
 
+                {activeTab === 'available' && profileData.availabilityStatus === 'busy' && (
+                  <div className="bg-amber-50 border border-amber-100 text-amber-800 px-4 py-2 rounded-lg text-xs flex items-center gap-2">
+                    <Info size={14} />
+                    You are marked as <strong>Busy</strong>. Employers may see you as less available.
+                  </div>
+                )}
+
                 {(activeTab === 'available' ? availableTabJobs : savedTabJobs).length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <Search size={48} className="mx-auto text-gray-300 mb-3" />
@@ -709,10 +764,16 @@ export default function WorkerPanel() {
                                 </div>
                               </div>
                               <div className="flex gap-2">
+                                <button 
+                                  onClick={() => setViewJobModal({ isOpen: true, job })}
+                                  className="p-1.5 rounded-full bg-gray-100 text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                  title="View Full Details"
+                                >
+                                  <Eye size={16} />
+                                </button>
                                 <button onClick={() => toggleSavedJob(job.id)} className={`p-1.5 rounded-full ${isSaved ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400 hover:text-blue-500'}`}>
                                   <Bookmark size={16} fill={isSaved ? "currentColor" : "none"} />
                                 </button>
-                                <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded uppercase h-fit">Open</span>
                               </div>
                             </div>
                             
@@ -844,7 +905,15 @@ export default function WorkerPanel() {
                       const inputs = applicationInputs[job.id] || { price: '', message: '', canMeetDeadline: true };
                       return (
                         <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border-2 border-purple-100 shadow-sm p-5">
-                          <h3 className="font-bold text-gray-900">{job.title}</h3>
+                          <div className="flex justify-between items-start">
+                            <h3 className="font-bold text-gray-900">{job.title}</h3>
+                            <button 
+                              onClick={() => setViewJobModal({ isOpen: true, job })}
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <Eye size={12} /> Details
+                            </button>
+                          </div>
                           <div className="mt-2">
                              <input
                                 type="number"
@@ -880,14 +949,22 @@ export default function WorkerPanel() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {myOffersJobs.map(({ job, application }) => (
                       <div key={application.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-                        <div className="flex justify-between">
+                        <div className="flex justify-between items-start">
                            <h3 className="font-bold text-gray-900">{job.title}</h3>
-                           <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
+                           <button 
+                              onClick={() => setViewJobModal({ isOpen: true, job })}
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <Eye size={12} /> Details
+                            </button>
+                        </div>
+                        <div className="mt-1 flex justify-between items-center">
+                          <p className="text-sm text-gray-500">Offer: {application.offeredPrice} ₼</p>
+                          <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
                               application.status === 'accepted' ? 'bg-green-100 text-green-700' : 
                               application.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
                            }`}>{application.status}</span>
                         </div>
-                        <p className="text-sm text-gray-500 mt-1">Offer: {application.offeredPrice} ₼</p>
                         
                         {application.status === 'accepted' && (
                           <div className="mt-3 p-2 bg-green-50 rounded border border-green-100 text-xs text-green-800 flex items-center gap-2">
@@ -930,9 +1007,17 @@ export default function WorkerPanel() {
                               <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
                               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{job.category}</span>
                             </div>
-                            <span className="bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded uppercase flex items-center gap-1">
-                              <PlayCircle size={12} /> In Progress
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => setViewJobModal({ isOpen: true, job })}
+                                className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                <Eye size={12} /> Details
+                              </button>
+                              <span className="bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded uppercase flex items-center gap-1">
+                                <PlayCircle size={12} /> In Progress
+                              </span>
+                            </div>
                           </div>
 
                           <div className="space-y-2 mb-4 text-sm text-gray-600">
@@ -963,6 +1048,7 @@ export default function WorkerPanel() {
                               jobTitle={job.title}
                               forceOpen={activeChatJobId === job.id}
                             />
+                            {/* Worker Report Button */}
                             <button 
                               onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
                               className="text-gray-400 hover:text-red-500 p-2"
@@ -988,12 +1074,43 @@ export default function WorkerPanel() {
                     <p>No completed jobs yet — once you finish a job, it will appear here.</p>
                   </div>
                 ) : (
-                  completedJobs.map(job => (
-                     <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90">
-                        <h3 className="font-bold text-gray-900">{job.title}</h3>
-                        <p className="text-sm text-gray-500">Completed on {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Unknown date'}</p>
-                     </div>
-                  ))
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {completedJobs.map(job => (
+                       <div 
+                         key={job.id} 
+                         id={`job-${job.id}`} 
+                         className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90 hover:opacity-100 hover:shadow-md transition-all group relative"
+                       >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{job.title}</h3>
+                              <p className="text-sm text-gray-500 mt-1">Completed on {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Unknown date'}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => setViewJobModal({ isOpen: true, job })}
+                                className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              {/* Worker Report Button for Completed */}
+                              <button 
+                                onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
+                                className="bg-gray-100 p-2 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="Report Issue"
+                              >
+                                <AlertTriangle size={18} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+                            <span className="bg-gray-100 px-2 py-0.5 rounded">{job.category}</span>
+                            <span>•</span>
+                            <span>Employer: {job.employerUsername}</span>
+                          </div>
+                       </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -1142,6 +1259,7 @@ export default function WorkerPanel() {
           jobId={disputeModal.jobId}
           openedBy={currentUser.username}
           againstUser={disputeModal.against}
+          role="worker"
         />
 
         {/* Completion Modal */}
@@ -1159,6 +1277,18 @@ export default function WorkerPanel() {
             onClose={() => setEmployerProfileModal({ isOpen: false, username: null })}
             username={employerProfileModal.username}
             readOnly={true}
+          />
+        )}
+
+        {/* Job Details Modal */}
+        {viewJobModal.isOpen && viewJobModal.job && (
+          <JobDetailsModal 
+            isOpen={viewJobModal.isOpen}
+            onClose={() => setViewJobModal({ isOpen: false, job: null })}
+            job={viewJobModal.job}
+            currentWorkerUsername={currentUser.username}
+            viewerRole="worker"
+            onReport={() => setDisputeModal({ isOpen: true, jobId: viewJobModal.job!.id, against: viewJobModal.job!.employerUsername })}
           />
         )}
 

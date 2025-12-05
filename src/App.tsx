@@ -5,6 +5,7 @@ import WorkerPanel from './WorkerPanel';
 import EmployerPanel from './EmployerPanel';
 import WorkerProfile from './WorkerProfile';
 import AdminPanel from './AdminPanel';
+import HomeFeed from './components/HomeFeed';
 
 function App() {
   return (
@@ -17,6 +18,9 @@ function App() {
         <Route path="/worker" element={<WorkerPanel />} />
         <Route path="/employer" element={<EmployerPanel />} />
         <Route path="/admin/*" element={<AdminPanel />} />
+        
+        {/* Global Feed */}
+        <Route path="/home" element={<HomeFeed />} />
         
         {/* Public Profile Route */}
         <Route path="/worker/:username" element={<WorkerProfile />} />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
-import { Dispute, DISPUTE_STORAGE_KEY } from '../types';
+import { Dispute, DISPUTE_STORAGE_KEY, UserRole } from '../types';
 import { logActivity } from '../utils/advancedFeatures';
 
 interface DisputeModalProps {
@@ -9,9 +9,10 @@ interface DisputeModalProps {
   jobId: string;
   openedBy: string;
   againstUser: string;
+  role?: UserRole; // 'employer' or 'worker'
 }
 
-const PROBLEM_TYPES = [
+const EMPLOYER_PROBLEM_TYPES = [
   "Worker didn't show up",
   "Job quality is poor",
   "Job is late",
@@ -19,11 +20,22 @@ const PROBLEM_TYPES = [
   "Other"
 ];
 
-export default function DisputeModal({ isOpen, onClose, jobId, openedBy, againstUser }: DisputeModalProps) {
+const WORKER_PROBLEM_TYPES = [
+  "Employer didn't pay as agreed",
+  "Employer changed requirements unfairly",
+  "Job conditions were unsafe",
+  "Communication / behavior issue",
+  "Other"
+];
+
+export default function DisputeModal({ isOpen, onClose, jobId, openedBy, againstUser, role = 'employer' }: DisputeModalProps) {
   const [description, setDescription] = useState('');
-  const [problemType, setProblemType] = useState(PROBLEM_TYPES[0]);
+  const [problemType, setProblemType] = useState(role === 'employer' ? EMPLOYER_PROBLEM_TYPES[0] : WORKER_PROBLEM_TYPES[0]);
 
   if (!isOpen) return null;
+
+  const problemTypes = role === 'employer' ? EMPLOYER_PROBLEM_TYPES : WORKER_PROBLEM_TYPES;
+  const title = role === 'employer' ? "Report a Problem with Worker" : "Report a Problem with Job/Employer";
 
   const handleSubmit = () => {
     if (!description.trim()) return;
@@ -35,17 +47,19 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
       id: crypto.randomUUID(),
       jobId,
       openedBy,
+      createdByRole: role,
       againstUser,
       description,
       status: 'open',
       createdAt: new Date().toISOString(),
-      problemType
+      problemType,
+      type: role === 'employer' ? 'employerReport' : 'workerReport'
     };
 
     disputes.push(newDispute);
     localStorage.setItem(DISPUTE_STORAGE_KEY, JSON.stringify(disputes));
     
-    logActivity(openedBy, 'employer', 'DISPUTE_OPENED', { jobId, againstUser, type: problemType });
+    logActivity(openedBy, role, 'DISPUTE_OPENED', { jobId, againstUser, type: problemType });
     
     alert('Report submitted. Admin will review shortly.');
     onClose();
@@ -56,7 +70,7 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-red-600 flex items-center gap-2">
-            <AlertTriangle size={20} /> Report a Problem
+            <AlertTriangle size={20} /> {title}
           </h3>
           <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
         </div>
@@ -72,7 +86,7 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
             onChange={(e) => setProblemType(e.target.value)}
             className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white"
           >
-            {PROBLEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            {problemTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
 

@@ -12,7 +12,6 @@ export interface User {
   isActive?: boolean;
   location?: string; 
   coordinates?: { lat: number; lng: number };
-  // Feature: Onboarding Flag
   hasCompletedOnboarding?: boolean;
 }
 
@@ -25,7 +24,6 @@ export type JobApplication = {
   message?: string;
   createdAt: string;
   status: ApplicationStatus;
-  // Feature 5: Deadline confirmation
   canMeetDeadline?: boolean;
   estimatedDuration?: string;
 };
@@ -67,22 +65,18 @@ export type JobPost = {
   isAuction?: boolean;
   auctionMode?: 'open' | 'none';
 
-  // Feature 5: Desired Completion
   desiredCompletion?: {
     type: 'date' | 'relative' | 'none';
     value: string;
   };
 
-  // Feature 8: Materials
   materials?: 'by_employer' | 'by_worker' | 'none';
 
-  // Feature 9: Media
   media?: {
     before: MediaItem[];
     after: MediaItem[];
   };
 
-  // Feature 6: Checklist
   completionChecklist?: {
     worker: {
       workCompleted: boolean;
@@ -111,9 +105,8 @@ export type WorkerReview = {
 export type WorkerProfileData = {
   username: string;
   skills: string[];
-  regions?: string[]; // New Field: Service Regions
+  regions?: string[];
   bio?: string;
-  // Feature 4: Availability Status
   availabilityStatus?: 'available' | 'busy';
 };
 
@@ -143,17 +136,17 @@ export type NotificationType =
   | "offerAccepted"
   | "offerRejected"
   | "newMessage"
-  | "jobReminder" // Feature 2
-  | "jobUpdated"; // Feature: Job Editing
+  | "jobReminder"
+  | "jobUpdated";
 
 export type NotificationSection = "offers" | "chat" | "details";
 
 export type Notification = {
   id: string;
-  username: string; // recipient
+  username: string;
   type: NotificationType;
   jobId: string;
-  section?: NotificationSection; // Feature: Navigation Section
+  section?: NotificationSection;
   createdAt: string;
   isRead: boolean;
   payload?: any; 
@@ -187,19 +180,21 @@ export interface Badge {
 }
 
 export type DisputeStatus = "open" | "under_review" | "resolved" | "rejected";
+export type DisputeType = "employerReport" | "workerReport";
 
 export interface Dispute {
   id: string;
   jobId: string;
-  openedBy: string; 
+  openedBy: string; // Username
+  createdByRole: UserRole; // 'employer' | 'worker'
   againstUser: string; 
   description: string;
   createdAt: string;
   status: DisputeStatus;
   adminNotes?: string;
   resolvedAt?: string;
-  // Feature 1: Problem Type
   problemType?: string;
+  type: DisputeType; // Explicit type
 }
 
 export interface ActivityLog {
@@ -257,7 +252,6 @@ export const EMPLOYER_PREFS_KEY = 'employerPreferences';
 export const LAST_SESSION_KEY = 'lastSession';
 export const UI_LANGUAGE_KEY = 'uiLanguage';
 export const ADMIN_SETTINGS_KEY = 'adminSettings';
-// Feature 3: Saved Jobs
 export const SAVED_JOBS_KEY = 'savedJobs'; 
 
 export const JOB_CATEGORIES: JobCategory[] = [

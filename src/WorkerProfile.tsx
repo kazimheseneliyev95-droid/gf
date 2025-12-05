@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase, Clock, CheckSquare, Image as ImageIcon } from 'lucide-react';
-import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, JobPost, JOB_STORAGE_KEY } from './types';
+import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase, Clock, CheckSquare, Image as ImageIcon, Calendar, AlertTriangle, Eye } from 'lucide-react';
+import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, JobPost, JOB_STORAGE_KEY, WorkerAvailability, AVAILABILITY_STORAGE_KEY } from './types';
 import { calculateWorkerQuality, getBadges } from './utils/advancedFeatures';
 import { isFeatureEnabled } from './utils/featureFlags';
 import GamificationBadges from './components/GamificationBadges';
 import PremiumBadge from './components/PremiumBadge';
 import BehaviorScore from './components/BehaviorScore';
+import JobDetailsModal from './components/JobDetailsModal';
 
 export default function WorkerProfile() {
   const { username } = useParams<{ username: string }>();
@@ -16,6 +17,7 @@ export default function WorkerProfile() {
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [profileData, setProfileData] = useState<WorkerProfileData | null>(null);
   const [completedJobs, setCompletedJobs] = useState<JobPost[]>([]);
+  const [availability, setAvailability] = useState<WorkerAvailability | null>(null);
   
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -23,10 +25,14 @@ export default function WorkerProfile() {
   // Advanced
   const [qualityScore, setQualityScore] = useState(0);
   const [badges, setBadges] = useState<any[]>([]);
+  const [topCategories, setTopCategories] = useState<string[]>([]);
 
   // Feature Flags
   const showPremium = isFeatureEnabled('premiumBadges');
   const showBehavior = isFeatureEnabled('behaviorMonitoring');
+
+  // Modal
+  const [viewJob, setViewJob] = useState<JobPost | null>(null);
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
@@ -60,6 +66,14 @@ export default function WorkerProfile() {
       if (profile) setProfileData(profile);
     }
 
+    // Load Availability
+    const allAvailStr = localStorage.getItem(AVAILABILITY_STORAGE_KEY);
+    if (allAvailStr) {
+      const allAvail: WorkerAvailability[] = JSON.parse(allAvailStr);
+      const myAvail = allAvail.find(a => a.username === username);
+      if (myAvail) setAvailability(myAvail);
+    }
+
     // Load Work History (Feature 7)
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (allJobsStr) {
@@ -68,6 +82,28 @@ export default function WorkerProfile() {
       // Sort by completed date
       history.sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
       setCompletedJobs(history);
+
+      // Calculate Top Categories
+      const catCounts: Record<string, number> = {};
+      history.forEach(j => {
+        catCounts[j.category] = (catCounts[j.category] || 0) + 1;
+      });
+      // Also weight skills
+      const profile = allProfilesStr ? JSON.parse(allProfilesStr).find((p: any) => p.username === username) : null;
+      if (profile && profile.skills) {
+        profile.skills.forEach((s: string) => {
+          // Try to match skill to category loosely
+          const matchingCat = Object.keys(catCounts).find(c => c.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(c.toLowerCase()));
+          if (matchingCat) catCounts[matchingCat] += 2;
+          else catCounts[s] = (catCounts[s] || 0) + 2; 
+        });
+      }
+      
+      const sortedCats = Object.entries(catCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(e => e[0]);
+      setTopCategories(sortedCats);
     }
 
     // Check Favorite
@@ -107,6 +143,10 @@ export default function WorkerProfile() {
 
   if (!username) return null;
 
+  const availabilitySummary = availability && availability.availableDays.length > 0 
+    ? `Available on: ${availability.availableDays.join(', ')}`
+    : "Availability not set yet";
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -140,9 +180,25 @@ export default function WorkerProfile() {
               <GamificationBadges badges={badges} />
             </div>
 
-            <div className="flex items-center justify-center gap-2 mb-2">
+            <div className="flex items-center justify-center gap-2 mb-1">
               <h1 className="text-3xl font-bold text-gray-900">{username}</h1>
               {showPremium && <PremiumBadge username={username} role="worker" size="md" />}
+            </div>
+
+            {/* Availability Status Badge */}
+            <div className="flex flex-col items-center gap-1 mb-4">
+              {profileData?.availabilityStatus === 'available' ? (
+                <span className="px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs font-bold uppercase tracking-wide">
+                  Available
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full bg-gray-100 text-gray-600 text-xs font-bold uppercase tracking-wide">
+                  Busy
+                </span>
+              )}
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <Calendar size={12} /> {availabilitySummary}
+              </span>
             </div>
             
             {showBehavior && (
@@ -215,9 +271,23 @@ export default function WorkerProfile() {
           
           {/* Feature 7: Work History */}
           <div className="space-y-4">
-            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-              <Briefcase className="text-blue-500" /> Work History
-            </h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Briefcase className="text-blue-500" /> Work History
+              </h2>
+            </div>
+
+            {/* Specialized Categories */}
+            {topCategories.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                <span className="text-xs text-gray-500 font-medium py-1">Specialized in:</span>
+                {topCategories.map(cat => (
+                  <span key={cat} className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-semibold border border-blue-100">
+                    {cat}
+                  </span>
+                ))}
+              </div>
+            )}
             
             {completedJobs.length === 0 ? (
               <div className="bg-white rounded-xl p-8 text-center border border-gray-200 text-gray-500">
@@ -227,40 +297,54 @@ export default function WorkerProfile() {
               <div className="space-y-3">
                 {completedJobs.map(job => {
                   const review = reviews.find(r => r.jobId === job.id);
+                  const afterPhoto = job.media?.after?.[0]?.url;
+                  const myApp = job.applications?.find(a => a.workerUsername === username);
+                  
                   return (
-                    <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-                      <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-bold text-gray-900">{job.title}</h3>
-                        <span className="text-xs text-gray-400">{job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Done'}</span>
-                      </div>
-                      <p className="text-xs text-gray-500 mb-2">{job.category}</p>
-                      
-                      {review ? (
-                        <div className="bg-gray-50 p-2 rounded-lg">
-                          <div className="flex items-center gap-1 mb-1">
-                            <div className="flex text-amber-400">
-                              {[1, 2, 3, 4, 5].map(s => (
-                                <Star key={s} size={10} fill={s <= review.rating ? "currentColor" : "none"} className={s <= review.rating ? "" : "text-gray-300"} />
-                              ))}
-                            </div>
-                            <span className="text-xs font-bold text-gray-700">{review.rating.toFixed(1)}</span>
-                          </div>
-                          <p className="text-xs text-gray-600 italic">"{review.comment}"</p>
+                    <div 
+                      key={job.id} 
+                      onClick={() => setViewJob(job)}
+                      className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="flex gap-3">
+                        {/* Thumbnail */}
+                        <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200 flex items-center justify-center">
+                          {afterPhoto ? (
+                            <img src={afterPhoto} alt="Job" className="w-full h-full object-cover" />
+                          ) : (
+                            <CheckSquare className="text-gray-300" size={24} />
+                          )}
                         </div>
-                      ) : (
-                        <p className="text-xs text-gray-400 italic">No review left.</p>
-                      )}
 
-                      {/* Feature 9: Show After Media Thumbnails */}
-                      {job.media?.after && job.media.after.length > 0 && (
-                        <div className="flex gap-1 mt-2">
-                          {job.media.after.map((m, i) => (
-                            <div key={i} className="w-8 h-8 rounded bg-gray-100 overflow-hidden border border-gray-200">
-                              <img src={m.url} alt="Work" className="w-full h-full object-cover" />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start mb-1">
+                            <h3 className="font-bold text-gray-900 truncate group-hover:text-blue-600 transition-colors">{job.title}</h3>
+                            <span className="text-xs text-gray-400 whitespace-nowrap">{job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Done'}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
+                            {myApp && (
+                              <span className="text-[10px] font-mono text-gray-500">
+                                {job.isAuction ? 'Bid' : 'Fixed'}: {myApp.offeredPrice} ₼
+                              </span>
+                            )}
+                          </div>
+                          
+                          {review ? (
+                            <div className="flex items-center gap-1">
+                              <div className="flex text-amber-400">
+                                {[1, 2, 3, 4, 5].map(s => (
+                                  <Star key={s} size={10} fill={s <= review.rating ? "currentColor" : "none"} className={s <= review.rating ? "" : "text-gray-300"} />
+                                ))}
+                              </div>
+                              <span className="text-xs font-bold text-gray-700 ml-1">{review.rating.toFixed(1)}</span>
                             </div>
-                          ))}
+                          ) : (
+                            <span className="text-[10px] text-gray-400 italic">No rating</span>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
@@ -311,6 +395,16 @@ export default function WorkerProfile() {
           </div>
 
         </div>
+
+        {/* Job Details Modal (Read Only / Employer View) */}
+        {viewJob && (
+          <JobDetailsModal 
+            isOpen={!!viewJob}
+            onClose={() => setViewJob(null)}
+            job={viewJob}
+            viewerRole="employer" // Assume employer view or generic view
+          />
+        )}
       </div>
     </div>
   );

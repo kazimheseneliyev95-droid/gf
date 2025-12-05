@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon, Edit2, Layout } from 'lucide-react';
+import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon, Edit2, Layout, MessageSquare, Home } from 'lucide-react';
 import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY, MediaItem } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
 import { createNotification, getWorkerAverageRating } from './utils';
 
 // Advanced Features
-import { getBadges, getRecommendedWorkers, calculateEmployerTrust, logActivity, getLowestBid } from './utils/advancedFeatures';
+import { getBadges, getRecommendedWorkers, calculateEmployerTrust, logActivity, getLowestBid, calculateWorkerQuality } from './utils/advancedFeatures';
 import { isWorkerAvailable, getDistance } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
 
@@ -51,9 +51,10 @@ export default function EmployerPanel() {
 
   // Data State
   const [myJobs, setMyJobs] = useState<JobPost[]>([]);
-  const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number })[]>([]);
+  const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number, quality: number })[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [activeChatJobId, setActiveChatJobId] = useState<string | null>(null);
+  const [activeChatWorker, setActiveChatWorker] = useState<string | null>(null); // For per-worker chat
 
   // Advanced: Suggestions
   const [suggestedWorkers, setSuggestedWorkers] = useState<{ username: string, score: number, matchReason: string }[]>([]);
@@ -194,7 +195,8 @@ export default function EmployerPanel() {
       // Enrich with ratings
       const enrichedFavs = myFavs.map(f => ({
         ...f,
-        rating: getWorkerAverageRating(f.workerUsername)
+        rating: getWorkerAverageRating(f.workerUsername),
+        quality: calculateWorkerQuality(f.workerUsername)
       }));
       
       setFavorites(enrichedFavs);
@@ -446,6 +448,10 @@ export default function EmployerPanel() {
                   Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
                 </p>
                 <span className="text-gray-300">|</span>
+                <Link to="/home" className="text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
+                  <Home size={14} /> Home Feed
+                </Link>
+                <span className="text-gray-300">|</span>
                 <button 
                   onClick={() => setProfileModalOpen(true)}
                   className="text-blue-600 hover:underline font-medium"
@@ -506,8 +512,46 @@ export default function EmployerPanel() {
           {/* LEFT COLUMN: Create Job & Favorites */}
           <div className="lg:col-span-1 space-y-6">
             
+            {/* Favorites List */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Heart className="text-red-500" size={20} fill="currentColor" /> Favorite Workers
+              </h2>
+              {favorites.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No favorites yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {favorites.map(fav => (
+                    <div key={fav.workerUsername} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 border border-gray-200">
+                          <User size={16} />
+                        </div>
+                        <div>
+                          <Link to={`/worker/${fav.workerUsername}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">
+                            {fav.workerUsername}
+                          </Link>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            {fav.rating > 0 && (
+                              <span className="text-amber-500 flex items-center gap-0.5">
+                                <Star size={10} fill="currentColor" /> {fav.rating.toFixed(1)}
+                              </span>
+                            )}
+                            <span className="text-green-600 font-semibold">{fav.quality}% Qual.</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Link to={`/worker/${fav.workerUsername}`} className="text-xs bg-white border border-gray-200 px-2 py-1 rounded text-gray-600 hover:text-blue-600 hover:border-blue-200">
+                        Profile
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Create Job Form */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div className="bg-white rounded-xl shadow-sm p-6 border-t-4 border-t-blue-500">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Plus className="text-blue-500" size={20} /> Post New Job
               </h2>
@@ -670,34 +714,6 @@ export default function EmployerPanel() {
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors shadow-sm">Post Job</button>
               </form>
             </div>
-
-            {/* Favorites List */}
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Heart className="text-red-500" size={20} fill="currentColor" /> Favorite Workers
-              </h2>
-              {favorites.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">No favorites yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  {favorites.map(fav => (
-                    <div key={fav.workerUsername} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <Link to={`/worker/${fav.workerUsername}`} className="font-medium text-gray-900 hover:text-blue-600 hover:underline flex items-center gap-2">
-                          <User size={16} /> {fav.workerUsername}
-                        </Link>
-                        {fav.rating > 0 && (
-                          <span className="text-xs text-amber-500 flex items-center gap-0.5">
-                            <Star size={10} fill="currentColor" /> {fav.rating.toFixed(1)}
-                          </span>
-                        )}
-                      </div>
-                      <Link to={`/worker/${fav.workerUsername}`} className="text-xs text-blue-600 hover:underline">View Profile</Link>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
 
           {/* RIGHT COLUMN: My Jobs List */}
@@ -808,7 +824,7 @@ export default function EmployerPanel() {
                               : 'Manage & Suggestions'}
                           </button>
                           
-                          {/* Chat Button */}
+                          {/* Chat Button (Job Level) */}
                           {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
                             <ChatPanel 
                               jobId={job.id} 
@@ -1007,6 +1023,33 @@ export default function EmployerPanel() {
                                         <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
                                       </div>
 
+                                      {/* Per-Worker Chat Trigger */}
+                                      <div className="relative">
+                                        <button 
+                                          onClick={() => {
+                                            setActiveChatJobId(job.id);
+                                            setActiveChatWorker(app.workerUsername);
+                                          }}
+                                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
+                                          title={`Chat with ${app.workerUsername}`}
+                                        >
+                                          <MessageSquare size={18} />
+                                        </button>
+                                        {/* Render Chat Panel if active */}
+                                        {activeChatJobId === job.id && activeChatWorker === app.workerUsername && (
+                                          <div className="absolute right-0 top-full mt-2 z-50">
+                                            <ChatPanel 
+                                              jobId={job.id} 
+                                              currentUsername={currentUser.username} 
+                                              otherUsername={app.workerUsername} 
+                                              currentUserRole="employer"
+                                              jobTitle={job.title}
+                                              forceOpen={true}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+
                                       {/* Action Buttons */}
                                       {job.status === 'open' && app.status === 'pending' && (
                                         <div className="flex gap-2">
@@ -1148,6 +1191,7 @@ export default function EmployerPanel() {
           jobId={disputeModal.jobId}
           openedBy={currentUser.username}
           againstUser={disputeModal.against}
+          role="employer"
         />
 
         {/* Comparison Modal */}
