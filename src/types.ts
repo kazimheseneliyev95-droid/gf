@@ -16,8 +16,8 @@ export interface User {
   coordinates?: { lat: number; lng: number };
   hasCompletedOnboarding?: boolean;
   lastOnlineAt?: string;
-  serviceLevel?: ServiceLevel; // NEW: Worker SLA Level
-  riskScore?: number;          // NEW: Calculated Risk Score
+  serviceLevel?: ServiceLevel;
+  riskScore?: number;
 }
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -113,6 +113,11 @@ export type WorkerProfileData = {
   regions?: string[];
   bio?: string;
   availabilityStatus?: 'available' | 'busy';
+  // Extended fields
+  languages?: string[];
+  maxDistanceKm?: number;
+  jobPreferences?: string[]; // e.g. 'Small tasks', 'Full-day'
+  hiddenJobIds?: string[]; // For "Not Interested"
 };
 
 export type EmployerProfileData = {
@@ -123,6 +128,8 @@ export type EmployerProfileData = {
   regions?: string[];
   bio?: string;
   preferredCategories?: string[];
+  // Extended fields
+  budgetRange?: string; // e.g. "Low", "High"
 };
 
 export type JobMessage = {
@@ -159,14 +166,17 @@ export type NotificationType =
   | "offerRejected"
   | "newMessage"
   | "jobReminder"
-  | "jobUpdated";
+  | "jobUpdated"
+  | "system";
 
-export type NotificationSection = "offers" | "chat" | "details";
+export type NotificationSection = "offers" | "chat" | "details" | "system";
+export type NotificationCategory = "offers" | "messages" | "jobs" | "system";
 
 export type Notification = {
   id: string;
   username: string;
   type: NotificationType;
+  category: NotificationCategory; // NEW
   jobId: string;
   section?: NotificationSection;
   createdAt: string;
@@ -257,7 +267,17 @@ export interface AdminSettings {
   }
 }
 
-// NEW: Analytics Types
+export type SavedSearch = {
+  id: string;
+  name: string;
+  filters: {
+    category: string;
+    minBudget: string;
+    searchTerm: string;
+  }
+};
+
+// Analytics Types
 export type TimeRange = {
   from: Date;
   to: Date;
@@ -284,10 +304,10 @@ export type UserRiskMetrics = {
   role: 'worker' | 'employer';
   disputesLast30d: number;
   cancellationsLast30d: number;
-  accountsFromSameIp: number; // Mocked
+  accountsFromSameIp: number;
   totalCompletedJobs: number;
   avgRating?: number;
-  riskScore: number; // 0–100
+  riskScore: number;
   riskLevel: 'low' | 'medium' | 'high';
 };
 
@@ -310,6 +330,7 @@ export const LAST_SESSION_KEY = 'lastSession';
 export const UI_LANGUAGE_KEY = 'uiLanguage';
 export const ADMIN_SETTINGS_KEY = 'adminSettings';
 export const SAVED_JOBS_KEY = 'savedJobs'; 
+export const SAVED_SEARCHES_KEY = 'savedSearches';
 
 export const JOB_CATEGORIES: JobCategory[] = [
   "Plumbing", "Electric", "Painting", "Cleaning", "Carpentry", "Other"
