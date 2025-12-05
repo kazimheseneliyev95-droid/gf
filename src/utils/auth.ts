@@ -185,3 +185,33 @@ export const saveEmployerPreferences = (data: EmployerPreferences) => {
   // Update User Flag
   setUserOnboardingComplete(data.username);
 };
+
+// --- Online Status Helpers ---
+export const updateUserOnlineStatus = (username: string) => {
+  const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+  if (!usersStr) return;
+  const users: User[] = JSON.parse(usersStr);
+  
+  const updated = users.map(u => 
+    u.username === username ? { ...u, lastOnlineAt: new Date().toISOString() } : u
+  );
+  
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updated));
+};
+
+export const getUserOnlineStatus = (username: string): { isOnline: boolean, lastSeen: string | null } => {
+  const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+  if (!usersStr) return { isOnline: false, lastSeen: null };
+  const users: User[] = JSON.parse(usersStr);
+  const user = users.find(u => u.username === username);
+  
+  if (!user || !user.lastOnlineAt) return { isOnline: false, lastSeen: null };
+  
+  const lastSeenDate = new Date(user.lastOnlineAt);
+  const diff = (new Date().getTime() - lastSeenDate.getTime()) / 1000 / 60; // minutes
+  
+  return {
+    isOnline: diff < 5, // Online if active in last 5 mins
+    lastSeen: user.lastOnlineAt
+  };
+};

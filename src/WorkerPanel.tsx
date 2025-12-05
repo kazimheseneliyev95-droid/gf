@@ -4,7 +4,7 @@ import {
   LogOut, HardHat, MapPin, DollarSign, Send, User, 
   CheckCircle, XCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, 
-  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter
+  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter, Star, Plus
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 

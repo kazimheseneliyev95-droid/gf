@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, MessageSquare, Check, CheckCheck } from 'lucide-react';
+import { Send, X, MessageSquare, Check, CheckCheck, Circle } from 'lucide-react';
 import { JobMessage, MESSAGE_STORAGE_KEY } from '../types';
 import { createNotification, getChatUnreadCount } from '../utils';
+import { getUserOnlineStatus } from '../utils/auth';
 
 interface ChatPanelProps {
   jobId: string;
@@ -17,6 +18,8 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
+  const [otherUserStatus, setOtherUserStatus] = useState<{ isOnline: boolean, lastSeen: string | null }>({ isOnline: false, lastSeen: null });
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,6 +35,10 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
       setMessages(jobMsgs);
     }
     setUnreadCount(getChatUnreadCount(currentUsername, currentUserRole, jobId));
+  };
+
+  const updatePartnerStatus = () => {
+    setOtherUserStatus(getUserOnlineStatus(otherUsername));
   };
 
   const markAsRead = () => {
@@ -63,9 +70,13 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
 
   useEffect(() => {
     loadMessages();
-    const interval = setInterval(loadMessages, 3000);
+    updatePartnerStatus();
+    const interval = setInterval(() => {
+      loadMessages();
+      updatePartnerStatus();
+    }, 3000);
     return () => clearInterval(interval);
-  }, [jobId, currentUsername]);
+  }, [jobId, currentUsername, otherUsername]);
 
   useEffect(() => {
     if (isOpen) {
@@ -107,8 +118,21 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
     groupedMessages[date].push(msg);
   });
 
+  const formatLastSeen = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+  };
+
   return (
     <>
+      {/* Trigger Button - Always rendered in place */}
       <button
         onClick={() => setIsOpen(true)}
         className={`relative flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
@@ -139,18 +163,39 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
             
             {/* Header */}
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-purple-600 text-white sm:rounded-t-2xl shadow-sm">
-              <div>
-                <h3 className="font-bold text-sm flex items-center gap-2">
-                  {otherUsername}
-                  <span className="bg-purple-500 text-[10px] px-1.5 py-0.5 rounded-full text-white/90 uppercase font-semibold">
-                    {currentUserRole === 'employer' ? 'Worker' : 'Employer'}
-                  </span>
-                </h3>
-                <p className="text-xs text-purple-100 truncate max-w-[200px] opacity-90">{jobTitle}</p>
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center text-xs font-bold">
+                    {otherUsername.substring(0, 2).toUpperCase()}
+                  </div>
+                  {otherUserStatus.isOnline && (
+                    <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-400 border-2 border-purple-600 rounded-full"></div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm flex items-center gap-2">
+                    {otherUsername}
+                    <span className="bg-purple-500 text-[10px] px-1.5 py-0.5 rounded-full text-white/90 uppercase font-semibold">
+                      {currentUserRole === 'employer' ? 'Worker' : 'Employer'}
+                    </span>
+                  </h3>
+                  <div className="flex items-center gap-1 text-xs text-purple-200">
+                    {otherUserStatus.isOnline ? (
+                      <span className="text-green-300 font-medium">Online</span>
+                    ) : (
+                      <span>Last seen {otherUserStatus.lastSeen ? formatLastSeen(otherUserStatus.lastSeen) : 'recently'}</span>
+                    )}
+                  </div>
+                </div>
               </div>
               <button onClick={() => setIsOpen(false)} className="text-purple-100 hover:text-white transition-colors p-1 hover:bg-purple-500 rounded-full">
                 <X size={20} />
               </button>
+            </div>
+            
+            {/* Sub-header for Job Title */}
+            <div className="px-4 py-2 bg-purple-50 border-b border-purple-100 text-xs text-purple-800 truncate font-medium">
+              Job: {jobTitle}
             </div>
 
             {/* Messages */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, MessageSquare, Briefcase, XCircle, CheckCircle } from 'lucide-react';
-import { Notification, NOTIFICATION_KEY } from '../types';
+import { Notification, NOTIFICATION_KEY, UserRole } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 interface NotificationCenterProps {
@@ -11,7 +11,16 @@ export default function NotificationCenter({ username }: NotificationCenterProps
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const sessionStr = localStorage.getItem('currentUser');
+    if (sessionStr) {
+      const user = JSON.parse(sessionStr);
+      setCurrentUserRole(user.role);
+    }
+  }, []);
 
   const loadNotifications = () => {
     const allNotesStr = localStorage.getItem(NOTIFICATION_KEY);
@@ -55,7 +64,7 @@ export default function NotificationCenter({ username }: NotificationCenterProps
     markAsRead(n.id);
     setIsOpen(false);
 
-    if (n.jobId) {
+    if (n.jobId && currentUserRole) {
       const searchParams = new URLSearchParams();
       searchParams.set('jobId', n.jobId);
       if (n.section) searchParams.set('section', n.section);
@@ -63,7 +72,10 @@ export default function NotificationCenter({ username }: NotificationCenterProps
       // Append timestamp to force navigation change even if on same page
       searchParams.set('t', Date.now().toString());
       
+      const basePath = currentUserRole === 'employer' ? '/employer' : '/worker';
+      
       navigate({
+        pathname: basePath,
         search: searchParams.toString()
       });
     }

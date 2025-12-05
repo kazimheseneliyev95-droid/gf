@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './Login';
 import Notes from './Notes'; // Keeping this for legacy/fallback
@@ -6,8 +7,34 @@ import EmployerPanel from './EmployerPanel';
 import WorkerProfile from './WorkerProfile';
 import AdminPanel from './AdminPanel';
 import HomeFeed from './components/HomeFeed';
+import { updateUserOnlineStatus } from './utils/auth';
 
 function App() {
+  // Heartbeat for online status
+  useEffect(() => {
+    const updateStatus = () => {
+      const sessionStr = localStorage.getItem('currentUser');
+      if (sessionStr) {
+        try {
+          const user = JSON.parse(sessionStr);
+          if (user.username) {
+            updateUserOnlineStatus(user.username);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+
+    // Initial call
+    updateStatus();
+
+    // Interval every 2 minutes
+    const interval = setInterval(updateStatus, 2 * 60 * 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>

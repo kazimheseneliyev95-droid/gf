@@ -13,6 +13,7 @@ export interface User {
   location?: string; 
   coordinates?: { lat: number; lng: number };
   hasCompletedOnboarding?: boolean;
+  lastOnlineAt?: string; // Added for online status
 }
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, Map, List, Gavel, Edit2, Layout, DollarSign } from 'lucide-react';
+import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, MapPin, Clock, List, Gavel, Edit2, Layout, DollarSign, X } from 'lucide-react';
 import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
@@ -740,7 +740,7 @@ export default function EmployerPanel() {
                                           )}
                                           {showLoc && (
                                             <span className="flex items-center gap-0.5 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                              <Map size={10} /> ~{dist}km
+                                              <MapPin size={10} /> ~{dist}km
                                             </span>
                                           )}
                                         </div>

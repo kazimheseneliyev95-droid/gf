@@ -1,6 +1,8 @@
-import React from 'react';
-import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle } from 'lucide-react';
-import { JobPost, JobApplication } from '../types';
+import React, { useState } from 'react';
+import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send, Check } from 'lucide-react';
+import { JobPost, JobApplication, JOB_STORAGE_KEY, JobCategory } from '../types';
+import { createNotification } from '../utils';
+import { logActivity } from '../utils/advancedFeatures';
 
 interface Props {
   isOpen: boolean;
@@ -12,13 +14,60 @@ interface Props {
 }
 
 export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUsername, viewerRole = 'worker', onReport }: Props) {
+  const [offerPrice, setOfferPrice] = useState('');
+  const [offerMessage, setOfferMessage] = useState('');
+  const [canMeetDeadline, setCanMeetDeadline] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
+
   if (!isOpen) return null;
 
   const myApplication = currentWorkerUsername ? job.applications?.find(a => a.workerUsername === currentWorkerUsername) : null;
   
-  // For employer view, we might want to show the assigned worker's offer if viewing history
-  // But typically history view is just job details + review.
-  
+  const canApply = viewerRole === 'worker' && job.status === 'open' && !myApplication && currentWorkerUsername;
+
+  const handleSendOffer = () => {
+    if (!currentWorkerUsername || !offerPrice) return;
+
+    setIsSubmitting(true);
+    
+    // Simulate API delay
+    setTimeout(() => {
+      const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
+      if (allJobsStr) {
+        const allJobs: JobPost[] = JSON.parse(allJobsStr);
+        const jobIndex = allJobs.findIndex(j => j.id === job.id);
+        
+        if (jobIndex !== -1) {
+          const newApp: JobApplication = {
+            id: crypto.randomUUID(),
+            workerUsername: currentWorkerUsername,
+            offeredPrice: Number(offerPrice),
+            message: offerMessage,
+            createdAt: new Date().toISOString(),
+            status: 'pending',
+            canMeetDeadline
+          };
+
+          if (!allJobs[jobIndex].applications) allJobs[jobIndex].applications = [];
+          allJobs[jobIndex].applications.push(newApp);
+          
+          localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
+          
+          logActivity(currentWorkerUsername, 'worker', 'OFFER_SENT', { jobId: job.id, price: offerPrice, source: 'JobDetailsModal' });
+          createNotification(job.employerUsername, 'newOffer', job.id, { workerName: currentWorkerUsername }, 'offers');
+          
+          setSuccessMsg("Offer sent successfully!");
+          
+          // Force refresh logic would be ideal here, but since we are in a modal, 
+          // we can just show success. The parent component might need to refresh data.
+          // For now, we rely on the user closing the modal or navigating away.
+        }
+      }
+      setIsSubmitting(false);
+    }, 800);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col animate-in zoom-in-95 overflow-hidden">
@@ -146,29 +195,95 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
           )}
 
           {/* My Application Status - Only for Worker View */}
-          {viewerRole === 'worker' && myApplication && (
+          {viewerRole === 'worker' && (myApplication || successMsg) ? (
             <div className={`p-4 rounded-xl border ${
-              myApplication.status === 'accepted' ? 'bg-green-50 border-green-200' : 
-              myApplication.status === 'rejected' ? 'bg-red-50 border-red-200' : 
+              (myApplication?.status === 'accepted' || successMsg) ? 'bg-green-50 border-green-200' : 
+              myApplication?.status === 'rejected' ? 'bg-red-50 border-red-200' : 
               'bg-blue-50 border-blue-200'
             }`}>
               <h3 className="font-bold text-gray-900 mb-2 text-sm uppercase tracking-wide">My Offer</h3>
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{myApplication.offeredPrice} ₼</p>
-                  <p className="text-xs text-gray-500">Sent on {new Date(myApplication.createdAt).toLocaleString()}</p>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-sm font-bold uppercase ${
-                  myApplication.status === 'accepted' ? 'bg-green-200 text-green-800' : 
-                  myApplication.status === 'rejected' ? 'bg-red-200 text-red-800' : 
-                  'bg-blue-200 text-blue-800'
-                }`}>
-                  {myApplication.status}
-                </div>
-              </div>
-              {myApplication.message && (
-                <p className="mt-2 text-sm text-gray-600 italic">"{myApplication.message}"</p>
+              {successMsg ? (
+                 <div className="flex items-center gap-2 text-green-700 font-bold">
+                   <CheckCircle size={20} /> {successMsg}
+                 </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-2xl font-bold text-gray-900">{myApplication?.offeredPrice} ₼</p>
+                      <p className="text-xs text-gray-500">Sent on {myApplication && new Date(myApplication.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-sm font-bold uppercase ${
+                      myApplication?.status === 'accepted' ? 'bg-green-200 text-green-800' : 
+                      myApplication?.status === 'rejected' ? 'bg-red-200 text-red-800' : 
+                      'bg-blue-200 text-blue-800'
+                    }`}>
+                      {myApplication?.status}
+                    </div>
+                  </div>
+                  {myApplication?.message && (
+                    <p className="mt-2 text-sm text-gray-600 italic">"{myApplication.message}"</p>
+                  )}
+                </>
               )}
+            </div>
+          ) : null}
+          
+          {/* Send Offer Form */}
+          {canApply && !successMsg && (
+            <div className="bg-white border border-blue-200 rounded-xl p-5 shadow-sm ring-1 ring-blue-50">
+              <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Send size={18} className="text-blue-600" /> Send an Offer
+              </h3>
+              
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Your Price (₼)</label>
+                    <div className="relative">
+                      <DollarSign className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                      <input 
+                        type="number" 
+                        value={offerPrice}
+                        onChange={e => setOfferPrice(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  {job.desiredCompletion && (
+                    <div className="flex items-end pb-2">
+                       <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                         <input 
+                           type="checkbox" 
+                           checked={canMeetDeadline}
+                           onChange={e => setCanMeetDeadline(e.target.checked)}
+                           className="w-4 h-4 text-blue-600 rounded"
+                         />
+                         I can meet the deadline
+                       </label>
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Message (Optional)</label>
+                  <textarea 
+                    value={offerMessage}
+                    onChange={e => setOfferMessage(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-20 resize-none"
+                    placeholder="Why are you the best fit for this job?"
+                  />
+                </div>
+                
+                <button 
+                  onClick={handleSendOffer}
+                  disabled={!offerPrice || isSubmitting}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? 'Sending...' : 'Submit Offer'}
+                </button>
+              </div>
             </div>
           )}
 
