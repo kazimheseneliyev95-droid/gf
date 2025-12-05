@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase } from 'lucide-react';
-import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
+import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase, Clock, CheckSquare, Image as ImageIcon } from 'lucide-react';
+import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, JobPost, JOB_STORAGE_KEY } from './types';
 import { calculateWorkerQuality, getBadges } from './utils/advancedFeatures';
 import { isFeatureEnabled } from './utils/featureFlags';
 import GamificationBadges from './components/GamificationBadges';
@@ -15,6 +15,7 @@ export default function WorkerProfile() {
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [profileData, setProfileData] = useState<WorkerProfileData | null>(null);
+  const [completedJobs, setCompletedJobs] = useState<JobPost[]>([]);
   
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -59,6 +60,16 @@ export default function WorkerProfile() {
       if (profile) setProfileData(profile);
     }
 
+    // Load Work History (Feature 7)
+    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
+    if (allJobsStr) {
+      const allJobs: JobPost[] = JSON.parse(allJobsStr);
+      const history = allJobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed');
+      // Sort by completed date
+      history.sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
+      setCompletedJobs(history);
+    }
+
     // Check Favorite
     if (currentUser && currentUser.role === 'employer') {
       const allFavsStr = localStorage.getItem(FAVORITE_WORKERS_KEY);
@@ -98,7 +109,7 @@ export default function WorkerProfile() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         
         {/* Back Button */}
         <button 
@@ -113,8 +124,16 @@ export default function WorkerProfile() {
           <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-blue-500 to-purple-600 opacity-10"></div>
           
           <div className="relative">
-            <div className="w-24 h-24 bg-white border-4 border-white shadow-lg text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-24 bg-white border-4 border-white shadow-lg text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 relative">
               <User size={48} />
+              {/* Feature 4: Busy/Available Status */}
+              {profileData?.availabilityStatus && (
+                <div className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center ${
+                  profileData.availabilityStatus === 'available' ? 'bg-green-500' : 'bg-gray-400'
+                }`} title={profileData.availabilityStatus === 'available' ? 'Available' : 'Busy'}>
+                  <div className="w-2 h-2 bg-white rounded-full"></div>
+                </div>
+              )}
             </div>
             
             <div className="flex justify-center mb-2">
@@ -192,47 +211,105 @@ export default function WorkerProfile() {
           </div>
         </div>
 
-        {/* Reviews List */}
-        <div className="space-y-4">
-          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-            <MessageSquare className="text-blue-500" />
-            Reviews
-          </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {reviews.length === 0 ? (
-            <div className="bg-white rounded-xl p-8 text-center border border-gray-200 text-gray-500">
-              This worker has no reviews yet.
-            </div>
-          ) : (
-            reviews.map((review) => (
-              <div key={review.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="bg-gray-100 p-1.5 rounded-full">
-                      <Briefcase size={14} className="text-gray-500" />
-                    </div>
-                    <span className="font-semibold text-gray-900 text-sm">{review.employerUsername}</span>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(review.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                
-                <div className="flex text-amber-400 mb-3">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star 
-                      key={star} 
-                      size={16} 
-                      fill={star <= review.rating ? "currentColor" : "none"} 
-                      className={star <= review.rating ? "" : "text-gray-300"}
-                    />
-                  ))}
-                </div>
-                
-                <p className="text-gray-700 text-sm leading-relaxed">"{review.comment}"</p>
+          {/* Feature 7: Work History */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <Briefcase className="text-blue-500" /> Work History
+            </h2>
+            
+            {completedJobs.length === 0 ? (
+              <div className="bg-white rounded-xl p-8 text-center border border-gray-200 text-gray-500">
+                No completed jobs yet.
               </div>
-            ))
-          )}
+            ) : (
+              <div className="space-y-3">
+                {completedJobs.map(job => {
+                  const review = reviews.find(r => r.jobId === job.id);
+                  return (
+                    <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-gray-900">{job.title}</h3>
+                        <span className="text-xs text-gray-400">{job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Done'}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-2">{job.category}</p>
+                      
+                      {review ? (
+                        <div className="bg-gray-50 p-2 rounded-lg">
+                          <div className="flex items-center gap-1 mb-1">
+                            <div className="flex text-amber-400">
+                              {[1, 2, 3, 4, 5].map(s => (
+                                <Star key={s} size={10} fill={s <= review.rating ? "currentColor" : "none"} className={s <= review.rating ? "" : "text-gray-300"} />
+                              ))}
+                            </div>
+                            <span className="text-xs font-bold text-gray-700">{review.rating.toFixed(1)}</span>
+                          </div>
+                          <p className="text-xs text-gray-600 italic">"{review.comment}"</p>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No review left.</p>
+                      )}
+
+                      {/* Feature 9: Show After Media Thumbnails */}
+                      {job.media?.after && job.media.after.length > 0 && (
+                        <div className="flex gap-1 mt-2">
+                          {job.media.after.map((m, i) => (
+                            <div key={i} className="w-8 h-8 rounded bg-gray-100 overflow-hidden border border-gray-200">
+                              <img src={m.url} alt="Work" className="w-full h-full object-cover" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Reviews List */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <MessageSquare className="text-blue-500" /> Reviews
+            </h2>
+            
+            {reviews.length === 0 ? (
+              <div className="bg-white rounded-xl p-8 text-center border border-gray-200 text-gray-500">
+                This worker has no reviews yet.
+              </div>
+            ) : (
+              reviews.map((review) => (
+                <div key={review.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="bg-gray-100 p-1.5 rounded-full">
+                        <User size={14} className="text-gray-500" />
+                      </div>
+                      <span className="font-semibold text-gray-900 text-sm">{review.employerUsername}</span>
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      {new Date(review.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  
+                  <div className="flex text-amber-400 mb-3">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Star 
+                        key={star} 
+                        size={16} 
+                        fill={star <= review.rating ? "currentColor" : "none"} 
+                        className={star <= review.rating ? "" : "text-gray-300"}
+                      />
+                    ))}
+                  </div>
+                  
+                  <p className="text-gray-700 text-sm leading-relaxed">"{review.comment}"</p>
+                </div>
+              ))
+            )}
+          </div>
+
         </div>
       </div>
     </div>

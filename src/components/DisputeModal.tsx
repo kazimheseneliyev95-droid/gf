@@ -11,8 +11,17 @@ interface DisputeModalProps {
   againstUser: string;
 }
 
+const PROBLEM_TYPES = [
+  "Worker didn't show up",
+  "Job quality is poor",
+  "Job is late",
+  "Payment dispute",
+  "Other"
+];
+
 export default function DisputeModal({ isOpen, onClose, jobId, openedBy, againstUser }: DisputeModalProps) {
   const [description, setDescription] = useState('');
+  const [problemType, setProblemType] = useState(PROBLEM_TYPES[0]);
 
   if (!isOpen) return null;
 
@@ -29,15 +38,16 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
       againstUser,
       description,
       status: 'open',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      problemType
     };
 
     disputes.push(newDispute);
     localStorage.setItem(DISPUTE_STORAGE_KEY, JSON.stringify(disputes));
     
-    logActivity(openedBy, 'worker', 'DISPUTE_OPENED', { jobId, againstUser }); // Role is approximated here, logic usually knows role
+    logActivity(openedBy, 'employer', 'DISPUTE_OPENED', { jobId, againstUser, type: problemType });
     
-    alert('Dispute submitted. Admin will review shortly.');
+    alert('Report submitted. Admin will review shortly.');
     onClose();
   };
 
@@ -46,7 +56,7 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
       <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-red-600 flex items-center gap-2">
-            <AlertTriangle size={20} /> Open Dispute
+            <AlertTriangle size={20} /> Report a Problem
           </h3>
           <button onClick={onClose}><X size={20} className="text-gray-400" /></button>
         </div>
@@ -55,16 +65,30 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
           Reporting an issue with <strong>{againstUser}</strong> for Job ID: <span className="font-mono text-xs">{jobId.slice(0,8)}</span>.
         </p>
 
-        <textarea
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="Describe the issue in detail..."
-          className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none mb-4"
-        />
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-700 mb-1">Problem Type</label>
+          <select 
+            value={problemType}
+            onChange={(e) => setProblemType(e.target.value)}
+            className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white"
+          >
+            {PROBLEM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs font-bold text-gray-700 mb-1">Description</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Describe the issue in detail..."
+            className="w-full h-32 p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none"
+          />
+        </div>
 
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium">Cancel</button>
-          <button onClick={handleSubmit} className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">Submit Dispute</button>
+          <button onClick={handleSubmit} className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">Submit Report</button>
         </div>
       </div>
     </div>

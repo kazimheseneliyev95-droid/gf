@@ -240,3 +240,9 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
 
   return scored.sort((a, b) => b.score - a.score).slice(0, 5);
 };
+
+// --- AUCTION HELPER ---
+export const getLowestBid = (job: JobPost): number | null => {
+  if (!job.applications || job.applications.length === 0) return null;
+  return Math.min(...job.applications.map(a => a.offeredPrice));
+};

@@ -20,12 +20,12 @@ export default function DisputeCenter() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-gray-900">Dispute Resolution Center</h2>
+      <h2 className="text-2xl font-bold text-gray-900">Problem Reports & Disputes</h2>
       
       <div className="grid gap-4">
         {disputes.length === 0 ? (
           <div className="bg-white p-8 text-center text-gray-500 rounded-xl border border-gray-200">
-            No active disputes.
+            No active reports.
           </div>
         ) : (
           disputes.map(d => (
@@ -39,9 +39,14 @@ export default function DisputeCenter() {
                     {d.status}
                   </span>
                   <span className="text-xs text-gray-400">{new Date(d.createdAt).toLocaleDateString()}</span>
+                  {d.problemType && (
+                    <span className="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                      {d.problemType}
+                    </span>
+                  )}
                 </div>
                 <h3 className="font-bold text-gray-900 mb-1">
-                  {d.openedBy} <span className="text-gray-400 font-normal">vs</span> {d.againstUser}
+                  {d.openedBy} <span className="text-gray-400 font-normal">reported</span> {d.againstUser}
                 </h3>
                 <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100">
                   "{d.description}"

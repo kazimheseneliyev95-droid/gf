@@ -8,7 +8,8 @@ const DEFAULT_SETTINGS: AdminSettings = {
     locationDistanceMatching: false,
     premiumBadges: false,
     behaviorMonitoring: false,
-    ltvAnalytics: false
+    ltvAnalytics: false,
+    auctionMode: false
   }
 };
 

@@ -10,7 +10,6 @@ export interface User {
   password?: string;
   role: UserRole;
   isActive?: boolean;
-  // Feature 12: Location
   location?: string; 
   coordinates?: { lat: number; lng: number };
 }
@@ -24,6 +23,9 @@ export type JobApplication = {
   message?: string;
   createdAt: string;
   status: ApplicationStatus;
+  // Feature 5: Deadline confirmation
+  canMeetDeadline?: boolean;
+  estimatedDuration?: string;
 };
 
 export type JobStatus = 'open' | 'processing' | 'completed';
@@ -35,6 +37,9 @@ export type JobCategory =
   | "Cleaning"
   | "Carpentry"
   | "Other";
+
+export type MediaType = 'image' | 'video';
+export type MediaItem = { url: string; type: MediaType };
 
 export type JobPost = {
   id: string;
@@ -54,9 +59,41 @@ export type JobPost = {
   category: JobCategory;
   tags?: string[];
   
-  // Feature 12: Location
   location?: string;
   coordinates?: { lat: number; lng: number };
+
+  isAuction?: boolean;
+  auctionMode?: 'open' | 'none';
+
+  // Feature 5: Desired Completion
+  desiredCompletion?: {
+    type: 'date' | 'relative' | 'none';
+    value: string;
+  };
+
+  // Feature 8: Materials
+  materials?: 'by_employer' | 'by_worker' | 'none';
+
+  // Feature 9: Media
+  media?: {
+    before: MediaItem[];
+    after: MediaItem[];
+  };
+
+  // Feature 6: Checklist
+  completionChecklist?: {
+    worker: {
+      workCompleted: boolean;
+      materialsHandled: boolean;
+      problemResolved: boolean;
+      cleanupDone: boolean;
+      finalMediaUploaded: boolean;
+    };
+    employer?: {
+      confirmed: boolean;
+      comment?: string;
+    };
+  };
 };
 
 export type WorkerReview = {
@@ -73,6 +110,8 @@ export type WorkerProfileData = {
   username: string;
   skills: string[];
   bio?: string;
+  // Feature 4: Availability Status
+  availabilityStatus?: 'available' | 'busy';
 };
 
 export type JobMessage = {
@@ -82,8 +121,6 @@ export type JobMessage = {
   senderUsername: string;
   text: string;
   createdAt: string;
-  
-  // Read status
   isReadByEmployer: boolean;
   isReadByWorker: boolean;
 };
@@ -92,7 +129,8 @@ export type NotificationType =
   | "newOffer"
   | "offerAccepted"
   | "offerRejected"
-  | "newMessage";
+  | "newMessage"
+  | "jobReminder"; // Feature 2
 
 export type Notification = {
   id: string;
@@ -110,16 +148,12 @@ export type FavoriteWorker = {
   addedAt: string;
 };
 
-// --- NEW ADVANCED TYPES ---
-
-// 9. Availability
 export type WorkerAvailability = {
   username: string;
-  availableDays: string[]; // "Mon", "Tue", etc.
+  availableDays: string[]; 
   updatedAt: string;
 };
 
-// 11. Gamification
 export type BadgeType = 
   | "top-rated" 
   | "fast-responder" 
@@ -132,35 +166,34 @@ export interface Badge {
   id: BadgeType;
   label: string;
   description: string;
-  icon: string; // Lucide icon name mapping
+  icon: string; 
 }
 
-// 14. Disputes
 export type DisputeStatus = "open" | "under_review" | "resolved" | "rejected";
 
 export interface Dispute {
   id: string;
   jobId: string;
-  openedBy: string; // worker or employer username
-  againstUser: string; // other party
+  openedBy: string; 
+  againstUser: string; 
   description: string;
   createdAt: string;
   status: DisputeStatus;
   adminNotes?: string;
   resolvedAt?: string;
+  // Feature 1: Problem Type
+  problemType?: string;
 }
 
-// 15. Activity Logs
 export interface ActivityLog {
   id: string;
-  user: string;         // username
+  user: string;         
   role: UserRole;
-  action: string;       // e.g. "JOB_CREATED", "OFFER_SENT"
-  details?: any;        // small payload: jobId, etc.
+  action: string;       
+  details?: any;        
   createdAt: string;
 }
 
-// --- AUTH & ONBOARDING TYPES ---
 export type WorkerOnboardingData = {
   username: string;
   category: string;
@@ -177,7 +210,6 @@ export type EmployerPreferences = {
 
 export type AuthLanguage = 'en' | 'az' | 'ru';
 
-// --- ADMIN SETTINGS (FEATURE TOGGLES) ---
 export interface AdminSettings {
   features: {
     workerComparisonView: boolean;
@@ -187,6 +219,7 @@ export interface AdminSettings {
     premiumBadges: boolean;
     behaviorMonitoring: boolean;
     ltvAnalytics: boolean;
+    auctionMode: boolean; 
   }
 }
 
@@ -198,8 +231,6 @@ export const MESSAGE_STORAGE_KEY = 'jobMessages';
 export const NOTIFICATION_KEY = 'notifications';
 export const FAVORITE_WORKERS_KEY = 'favoriteWorkers';
 export const USERS_STORAGE_KEY = 'users';
-
-// New Storage Keys
 export const AVAILABILITY_STORAGE_KEY = 'workerAvailability';
 export const DISPUTE_STORAGE_KEY = 'disputes';
 export const ACTIVITY_LOG_KEY = 'activityLogs';
@@ -208,6 +239,8 @@ export const EMPLOYER_PREFS_KEY = 'employerPreferences';
 export const LAST_SESSION_KEY = 'lastSession';
 export const UI_LANGUAGE_KEY = 'uiLanguage';
 export const ADMIN_SETTINGS_KEY = 'adminSettings';
+// Feature 3: Saved Jobs
+export const SAVED_JOBS_KEY = 'savedJobs'; 
 
 export const JOB_CATEGORIES: JobCategory[] = [
   "Plumbing", "Electric", "Painting", "Cleaning", "Carpentry", "Other"

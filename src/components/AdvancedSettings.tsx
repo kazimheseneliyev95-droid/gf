@@ -89,6 +89,12 @@ export default function AdvancedSettings() {
             isOn={settings.features.ltvAnalytics}
             onToggle={() => toggleFeature('ltvAnalytics')}
           />
+          <FeatureToggle 
+            label="Open Bidding (Auction Mode)" 
+            desc="Allows employers to create jobs where workers can see the lowest bid and compete."
+            isOn={settings.features.auctionMode}
+            onToggle={() => toggleFeature('auctionMode')}
+          />
         </div>
 
         <div className="mt-8 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
