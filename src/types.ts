@@ -10,6 +10,9 @@ export interface User {
   password?: string;
   role: UserRole;
   isActive?: boolean;
+  // Feature 12: Location
+  location?: string; 
+  coordinates?: { lat: number; lng: number };
 }
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -19,14 +22,11 @@ export type JobApplication = {
   workerUsername: string;
   offeredPrice: number;
   message?: string;
-  estimatedDuration?: string; // New: Worker estimation
   createdAt: string;
   status: ApplicationStatus;
 };
 
-export type JobStatus = 'open' | 'processing' | 'completed' | 'awaiting_approval';
-
-export type JobProgress = 'not_started' | 'started' | 'finished';
+export type JobStatus = 'open' | 'processing' | 'completed';
 
 export type JobCategory = 
   | "Plumbing"
@@ -35,8 +35,6 @@ export type JobCategory =
   | "Cleaning"
   | "Carpentry"
   | "Other";
-
-export type MaterialsType = "Provided by employer" | "Provided by worker" | "Not needed";
 
 export type JobPost = {
   id: string;
@@ -55,13 +53,10 @@ export type JobPost = {
   
   category: JobCategory;
   tags?: string[];
-
-  // New Fields
-  isAuction?: boolean;
-  media?: string[]; // Array of URLs
-  materials?: MaterialsType;
-  progress?: JobProgress; // For tracking Start -> Finish
-  progressStartedAt?: string;
+  
+  // Feature 12: Location
+  location?: string;
+  coordinates?: { lat: number; lng: number };
 };
 
 export type WorkerReview = {
@@ -74,26 +69,10 @@ export type WorkerReview = {
   createdAt: string;
 };
 
-export type WorkerAvailability = 'Available' | 'Busy' | 'Available in 24h' | 'Available in 48h';
-
 export type WorkerProfileData = {
   username: string;
   skills: string[];
   bio?: string;
-  experience?: number; // Years
-  portfolio?: string[]; // Image URLs
-  availability?: WorkerAvailability;
-  
-  // Onboarding Data
-  city?: string;
-  priceLevel?: 'Low' | 'Medium' | 'High';
-  onboardingCompleted?: boolean;
-};
-
-export type EmployerProfileData = {
-  username: string;
-  preferredCategories: string[];
-  onboardingCompleted?: boolean;
 };
 
 export type JobMessage = {
@@ -113,9 +92,7 @@ export type NotificationType =
   | "newOffer"
   | "offerAccepted"
   | "offerRejected"
-  | "newMessage"
-  | "jobStarted"
-  | "jobCompleted";
+  | "newMessage";
 
 export type Notification = {
   id: string;
@@ -133,28 +110,104 @@ export type FavoriteWorker = {
   addedAt: string;
 };
 
-// Admin Feature Toggles
-export type AdminSettings = {
-  workerComparison: boolean;
-  riskAlerts: boolean;
-  smartMatching: boolean;
-  locationMatching: boolean;
-  premiumBadges: boolean;
-  behavioralMonitoring: boolean;
-  ltvAnalytics: boolean;
+// --- NEW ADVANCED TYPES ---
+
+// 9. Availability
+export type WorkerAvailability = {
+  username: string;
+  availableDays: string[]; // "Mon", "Tue", etc.
+  updatedAt: string;
 };
+
+// 11. Gamification
+export type BadgeType = 
+  | "top-rated" 
+  | "fast-responder" 
+  | "reliable-pro" 
+  | "great-employer" 
+  | "frequent-poster"
+  | "newcomer";
+
+export interface Badge {
+  id: BadgeType;
+  label: string;
+  description: string;
+  icon: string; // Lucide icon name mapping
+}
+
+// 14. Disputes
+export type DisputeStatus = "open" | "under_review" | "resolved" | "rejected";
+
+export interface Dispute {
+  id: string;
+  jobId: string;
+  openedBy: string; // worker or employer username
+  againstUser: string; // other party
+  description: string;
+  createdAt: string;
+  status: DisputeStatus;
+  adminNotes?: string;
+  resolvedAt?: string;
+}
+
+// 15. Activity Logs
+export interface ActivityLog {
+  id: string;
+  user: string;         // username
+  role: UserRole;
+  action: string;       // e.g. "JOB_CREATED", "OFFER_SENT"
+  details?: any;        // small payload: jobId, etc.
+  createdAt: string;
+}
+
+// --- AUTH & ONBOARDING TYPES ---
+export type WorkerOnboardingData = {
+  username: string;
+  category: string;
+  city: string;
+  priceLevel: 'Low' | 'Medium' | 'High';
+  completedAt: string;
+};
+
+export type EmployerPreferences = {
+  username: string;
+  interestedCategories: string[];
+  completedAt: string;
+};
+
+export type AuthLanguage = 'en' | 'az' | 'ru';
+
+// --- ADMIN SETTINGS (FEATURE TOGGLES) ---
+export interface AdminSettings {
+  features: {
+    workerComparisonView: boolean;
+    workerRiskAlerts: boolean;
+    smartAvailabilityMatching: boolean;
+    locationDistanceMatching: boolean;
+    premiumBadges: boolean;
+    behaviorMonitoring: boolean;
+    ltvAnalytics: boolean;
+  }
+}
 
 // Storage Keys
 export const JOB_STORAGE_KEY = 'jobPosts';
 export const REVIEW_STORAGE_KEY = 'workerReviews';
 export const WORKER_PROFILE_KEY = 'workerProfiles';
-export const EMPLOYER_PROFILE_KEY = 'employerProfiles'; // New
 export const MESSAGE_STORAGE_KEY = 'jobMessages';
 export const NOTIFICATION_KEY = 'notifications';
 export const FAVORITE_WORKERS_KEY = 'favoriteWorkers';
 export const USERS_STORAGE_KEY = 'users';
+
+// New Storage Keys
+export const AVAILABILITY_STORAGE_KEY = 'workerAvailability';
+export const DISPUTE_STORAGE_KEY = 'disputes';
+export const ACTIVITY_LOG_KEY = 'activityLogs';
+export const WORKER_ONBOARDING_KEY = 'workerOnboarding';
+export const EMPLOYER_PREFS_KEY = 'employerPreferences';
+export const LAST_SESSION_KEY = 'lastSession';
+export const UI_LANGUAGE_KEY = 'uiLanguage';
 export const ADMIN_SETTINGS_KEY = 'adminSettings';
-export const LAST_SESSION_KEY = 'lastSession'; // New
 
 export const JOB_CATEGORIES: JobCategory[] = [
   "Plumbing", "Electric", "Painting", "Cleaning", "Carpentry", "Other"

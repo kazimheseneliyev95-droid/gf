@@ -3,17 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, Users, Briefcase, FileText, MessageSquare, Bell, Settings, 
   Shield, Search, Trash2, CheckCircle, XCircle, Lock, Unlock, BarChart2,
-  ToggleLeft, ToggleRight, AlertTriangle
+  AlertTriangle, Activity, TrendingUp, Sliders
 } from 'lucide-react';
 import { 
-  User, JobPost, JobApplication, WorkerReview, JobMessage, Notification,
-  USERS_STORAGE_KEY, JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, MESSAGE_STORAGE_KEY, NOTIFICATION_KEY,
-  ADMIN_SETTINGS_KEY, AdminSettings
+  User, JobPost, WorkerReview, JobMessage, Notification,
+  USERS_STORAGE_KEY, JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, MESSAGE_STORAGE_KEY, NOTIFICATION_KEY
 } from './types';
 import AdminAnalytics from './components/AdminAnalytics';
-import { getAdminSettings } from './utils';
+import DisputeCenter from './components/DisputeCenter';
+import ActivityLogViewer from './components/ActivityLogViewer';
+import AdvancedSettings from './components/AdvancedSettings';
+import LTVDashboard from './components/LTVDashboard';
+import { isFeatureEnabled } from './utils/featureFlags';
 
-type AdminTab = 'dashboard' | 'analytics' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'settings';
+type AdminTab = 'dashboard' | 'analytics' | 'ltv' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'disputes' | 'logs' | 'advanced' | 'settings';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -25,13 +28,13 @@ export default function AdminPanel() {
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  
-  // Settings State
-  const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
 
   // Search States
   const [userSearch, setUserSearch] = useState('');
   const [jobSearch, setJobSearch] = useState('');
+
+  // Feature Flags
+  const showLTV = isFeatureEnabled('ltvAnalytics');
 
   useEffect(() => {
     const currentUserStr = localStorage.getItem('currentUser');
@@ -100,12 +103,6 @@ export default function AdminPanel() {
     navigate('/');
   };
 
-  const toggleSetting = (key: keyof AdminSettings) => {
-    const newSettings = { ...settings, [key]: !settings[key] };
-    setSettings(newSettings);
-    localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(newSettings));
-  };
-
   // Stats
   const stats = {
     totalUsers: users.length,
@@ -135,12 +132,16 @@ export default function AdminPanel() {
           {[
             { id: 'dashboard', icon: Briefcase, label: 'Dashboard' },
             { id: 'analytics', icon: BarChart2, label: 'Analytics' },
+            ...(showLTV ? [{ id: 'ltv', icon: TrendingUp, label: 'LTV Dashboard' }] : []),
             { id: 'users', icon: Users, label: 'Users' },
             { id: 'jobs', icon: FileText, label: 'Jobs' },
             { id: 'offers', icon: CheckCircle, label: 'Offers' },
             { id: 'reviews', icon: CheckCircle, label: 'Reviews' },
             { id: 'messages', icon: MessageSquare, label: 'Messages' },
             { id: 'notifications', icon: Bell, label: 'Notifications' },
+            { id: 'disputes', icon: AlertTriangle, label: 'Disputes' },
+            { id: 'logs', icon: Activity, label: 'Activity Logs' },
+            { id: 'advanced', icon: Sliders, label: 'Advanced Features' },
             { id: 'settings', icon: Settings, label: 'Settings' },
           ].map((item) => (
             <button
@@ -205,6 +206,13 @@ export default function AdminPanel() {
               messages={messages} 
               notifications={notifications} 
             />
+          </div>
+        )}
+
+        {activeTab === 'ltv' && showLTV && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-gray-900">Lifetime Value (LTV) Analytics</h2>
+            <LTVDashboard />
           </div>
         )}
 
@@ -301,12 +309,7 @@ export default function AdminPanel() {
               {filteredJobs.map(job => (
                 <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-900">{job.title}</h3>
-                      {job.isAuction && (
-                        <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full">AUCTION</span>
-                      )}
-                    </div>
+                    <h3 className="font-bold text-gray-900">{job.title}</h3>
                     <p className="text-sm text-gray-500">Employer: {job.employerUsername} • Status: {job.status}</p>
                     <p className="text-xs text-gray-400 mt-1">ID: {job.id}</p>
                   </div>
@@ -340,7 +343,7 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {jobs.flatMap(job => job.applications.map(app => ({ ...app, jobId: job.id }))).map(app => (
+                  {jobs.flatMap(job => (job.applications || []).map(app => ({ ...app, jobId: job.id }))).map(app => (
                     <tr key={app.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 font-mono text-xs text-gray-500">{app.jobId.slice(0, 8)}...</td>
                       <td className="px-6 py-4 font-medium">{app.workerUsername}</td>
@@ -455,48 +458,29 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {activeTab === 'settings' && (
-          <div className="space-y-8 animate-in fade-in duration-300">
-            <h2 className="text-2xl font-bold text-gray-900">System Settings</h2>
-            
-            {/* Feature Toggles */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-              <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
-                <ToggleLeft className="text-blue-600" /> Feature Toggles
-              </h3>
-              <p className="text-sm text-gray-500 mb-6">Enable or disable advanced marketplace features.</p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {Object.entries(settings).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <div>
-                      <p className="font-semibold text-gray-700 capitalize">
-                        {key.replace(/([A-Z])/g, ' $1').trim()}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {value ? 'Active' : 'Inactive'}
-                      </p>
-                    </div>
-                    <button 
-                      onClick={() => toggleSetting(key as keyof AdminSettings)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        value ? 'bg-blue-600' : 'bg-gray-200'
-                      }`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        value ? 'translate-x-6' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+        {activeTab === 'disputes' && (
+          <div className="animate-in fade-in duration-300">
+            <DisputeCenter />
+          </div>
+        )}
 
-            {/* Danger Zone */}
-            <div className="bg-white p-8 rounded-xl shadow-sm border border-red-100">
-              <h3 className="font-bold text-lg text-red-600 mb-4 flex items-center gap-2">
-                <AlertTriangle /> Danger Zone
-              </h3>
+        {activeTab === 'logs' && (
+          <div className="animate-in fade-in duration-300">
+            <ActivityLogViewer />
+          </div>
+        )}
+
+        {activeTab === 'advanced' && (
+          <div className="animate-in fade-in duration-300">
+            <AdvancedSettings />
+          </div>
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <h2 className="text-2xl font-bold text-gray-900">System Settings</h2>
+            <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-200">
+              <h3 className="font-bold text-lg text-gray-800 mb-4">Danger Zone</h3>
               <p className="text-gray-600 mb-6 text-sm">
                 Resetting the database will clear ALL users (except admin), jobs, offers, messages, and reviews. 
                 This action cannot be undone.

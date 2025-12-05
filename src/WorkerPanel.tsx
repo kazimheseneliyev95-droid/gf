@@ -4,19 +4,29 @@ import {
   LogOut, HardHat, MapPin, Clock, DollarSign, Send, User, 
   CheckCircle, XCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, Trash2, 
-  MessageSquare, Star, AlertCircle, Filter, Image as ImageIcon, Box
+  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
   JOB_CATEGORIES, WORKER_PROFILE_KEY, WorkerProfileData, 
-  REVIEW_STORAGE_KEY, WorkerReview, WorkerAvailability,
-  ADMIN_SETTINGS_KEY, AdminSettings
+  REVIEW_STORAGE_KEY, WorkerReview 
 } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
-import { createNotification, getAdminSettings } from './utils';
+import { createNotification } from './utils';
 
-type Tab = 'available' | 'offers' | 'progress' | 'completed';
+// Advanced Features
+import { getBadges, getRecommendedJobs, logActivity } from './utils/advancedFeatures';
+import { getDistance } from './utils/advancedAnalytics';
+import { isFeatureEnabled } from './utils/featureFlags';
+
+import GamificationBadges from './components/GamificationBadges';
+import ProfileStrength from './components/ProfileStrength';
+import AvailabilityScheduler from './components/AvailabilityScheduler';
+import DisputeModal from './components/DisputeModal';
+import PremiumBadge from './components/PremiumBadge';
+
+type Tab = 'available' | 'recommended' | 'offers' | 'progress' | 'completed';
 
 export default function WorkerPanel() {
   const navigate = useNavigate();
@@ -29,7 +39,7 @@ export default function WorkerPanel() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Inputs
-  const [applicationInputs, setApplicationInputs] = useState<{ [key: string]: { price: string, message: string, duration: string } }>({});
+  const [applicationInputs, setApplicationInputs] = useState<{ [key: string]: { price: string, message: string } }>({});
 
   // Filters (Available Jobs)
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,10 +50,20 @@ export default function WorkerPanel() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState<WorkerProfileData>({ username: '', skills: [], bio: '' });
   const [skillInput, setSkillInput] = useState('');
-  const [portfolioUrl, setPortfolioUrl] = useState('');
 
-  // Stats
+  // Stats & Badges
   const [stats, setStats] = useState({ completed: 0, earned: 0, rating: 0 });
+  const [badges, setBadges] = useState<any[]>([]);
+  const [recommendedJobs, setRecommendedJobs] = useState<JobPost[]>([]);
+
+  // Feature Flags
+  const showLoc = isFeatureEnabled('locationDistanceMatching');
+  const showPremium = isFeatureEnabled('premiumBadges');
+
+  // Dispute Modal
+  const [disputeModal, setDisputeModal] = useState<{isOpen: boolean, jobId: string, against: string}>({
+    isOpen: false, jobId: '', against: ''
+  });
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
@@ -69,13 +89,11 @@ export default function WorkerPanel() {
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (allJobsStr) {
       let allJobs: JobPost[] = JSON.parse(allJobsStr);
-      // Normalize data
       allJobs = allJobs.map(job => ({
         ...job,
         status: job.status || 'open',
         category: job.category || 'Other',
         description: job.description || '',
-        progress: job.progress || 'not_started',
         applications: (job.applications || []).map(app => ({
           ...app,
           status: app.status || 'pending'
@@ -101,13 +119,17 @@ export default function WorkerPanel() {
       if (allReviewsStr) {
         const allReviews: WorkerReview[] = JSON.parse(allReviewsStr);
         myReviews = allReviews.filter(r => r.workerUsername === username);
-        setReviews(allReviews); // Store all reviews to find specific job reviews later
+        setReviews(allReviews); 
         if (myReviews.length > 0) {
           rating = myReviews.reduce((sum, r) => sum + r.rating, 0) / myReviews.length;
         }
       }
 
       setStats({ completed, earned, rating });
+      
+      // Advanced: Badges & Recommendations
+      setBadges(getBadges(username, 'worker'));
+      setRecommendedJobs(getRecommendedJobs(username));
     }
 
     // Load Profile
@@ -116,19 +138,19 @@ export default function WorkerPanel() {
       const allProfiles: WorkerProfileData[] = JSON.parse(allProfilesStr);
       const myProfile = allProfiles.find(p => p.username === username);
       if (myProfile) setProfileData(myProfile);
-      else setProfileData({ username, skills: [], bio: '', availability: 'Available' });
+      else setProfileData({ username, skills: [], bio: '' });
     } else {
-      setProfileData({ username, skills: [], bio: '', availability: 'Available' });
+      setProfileData({ username, skills: [], bio: '' });
     }
   };
 
   // --- Actions ---
 
-  const handleInputChange = (jobId: string, field: 'price' | 'message' | 'duration', value: string) => {
+  const handleInputChange = (jobId: string, field: 'price' | 'message', value: string) => {
     setApplicationInputs(prev => ({
       ...prev,
       [jobId]: {
-        ...(prev[jobId] || { price: '', message: '', duration: '' }),
+        ...(prev[jobId] || { price: '', message: '' }),
         [field]: value
       }
     }));
@@ -137,7 +159,7 @@ export default function WorkerPanel() {
   const handleSendOffer = (jobId: string, employerUsername: string) => {
     if (!currentUser) return;
     
-    const inputs = applicationInputs[jobId] || { price: '', message: '', duration: '' };
+    const inputs = applicationInputs[jobId] || { price: '', message: '' };
     if (!inputs.price || Number(inputs.price) <= 0) {
       alert("Please enter a valid price.");
       return;
@@ -157,29 +179,23 @@ export default function WorkerPanel() {
       return;
     }
 
-    // Check if already applied (for non-auction) or update bid (for auction)
-    const existingAppIndex = allJobs[jobIndex].applications.findIndex(a => a.workerUsername === currentUser.username);
-    
     const newApplication: JobApplication = {
-      id: existingAppIndex !== -1 ? allJobs[jobIndex].applications[existingAppIndex].id : crypto.randomUUID(),
+      id: crypto.randomUUID(),
       workerUsername: currentUser.username,
       offeredPrice: Number(inputs.price),
       message: inputs.message,
-      estimatedDuration: inputs.duration,
       createdAt: new Date().toISOString(),
       status: 'pending'
     };
 
-    if (existingAppIndex !== -1) {
-      allJobs[jobIndex].applications[existingAppIndex] = newApplication;
-    } else {
-      if (!allJobs[jobIndex].applications) allJobs[jobIndex].applications = [];
-      allJobs[jobIndex].applications.push(newApplication);
-    }
+    if (!allJobs[jobIndex].applications) allJobs[jobIndex].applications = [];
+    allJobs[jobIndex].applications.push(newApplication);
 
     localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
     
-    // Reset inputs
+    // Log Activity
+    logActivity(currentUser.username, 'worker', 'OFFER_SENT', { jobId, price: inputs.price });
+
     setApplicationInputs(prev => {
       const newState = { ...prev };
       delete newState[jobId];
@@ -191,7 +207,6 @@ export default function WorkerPanel() {
     setSuccessMessage("Offer sent successfully!");
     setTimeout(() => setSuccessMessage(null), 3000);
     
-    // Switch to My Offers tab
     setActiveTab('offers');
   };
 
@@ -206,48 +221,15 @@ export default function WorkerPanel() {
 
     if (jobIndex === -1) return;
 
-    // Remove application
     allJobs[jobIndex].applications = allJobs[jobIndex].applications.filter(app => app.id !== applicationId);
 
     localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
+    
+    logActivity(currentUser!.username, 'worker', 'OFFER_CANCELLED', { jobId });
+
     loadData(currentUser!.username);
     setSuccessMessage("Offer cancelled.");
     setTimeout(() => setSuccessMessage(null), 3000);
-  };
-
-  const handleStartJob = (jobId: string, employerUsername: string) => {
-    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
-    if (!allJobsStr) return;
-
-    const allJobs: JobPost[] = JSON.parse(allJobsStr);
-    const jobIndex = allJobs.findIndex(j => j.id === jobId);
-
-    if (jobIndex === -1) return;
-
-    allJobs[jobIndex].progress = 'started';
-    allJobs[jobIndex].progressStartedAt = new Date().toISOString();
-
-    localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
-    loadData(currentUser!.username);
-    createNotification(employerUsername, 'jobStarted', jobId, { workerName: currentUser?.username });
-  };
-
-  const handleMarkCompleted = (jobId: string, employerUsername: string) => {
-    if (!confirm("Mark this job as completed? The employer will need to approve it.")) return;
-
-    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
-    if (!allJobsStr) return;
-
-    const allJobs: JobPost[] = JSON.parse(allJobsStr);
-    const jobIndex = allJobs.findIndex(j => j.id === jobId);
-
-    if (jobIndex === -1) return;
-
-    allJobs[jobIndex].status = 'awaiting_approval';
-
-    localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
-    loadData(currentUser!.username);
-    createNotification(employerUsername, 'jobCompleted', jobId, { workerName: currentUser?.username });
   };
 
   const handleSaveProfile = () => {
@@ -259,7 +241,9 @@ export default function WorkerPanel() {
     updatedProfiles.push({ ...profileData, username: currentUser.username });
     
     localStorage.setItem(WORKER_PROFILE_KEY, JSON.stringify(updatedProfiles));
+    logActivity(currentUser.username, 'worker', 'PROFILE_UPDATED');
     setIsEditingProfile(false);
+    loadData(currentUser.username); // Reload to update recommendations/strength
   };
 
   const addSkill = () => {
@@ -273,13 +257,6 @@ export default function WorkerPanel() {
     setProfileData(prev => ({ ...prev, skills: prev.skills.filter(s => s !== skill) }));
   };
 
-  const addPortfolioImage = () => {
-    if (portfolioUrl.trim()) {
-      setProfileData(prev => ({ ...prev, portfolio: [...(prev.portfolio || []), portfolioUrl.trim()] }));
-      setPortfolioUrl('');
-    }
-  };
-
   const handleLogout = () => {
     localStorage.removeItem('currentUser');
     navigate('/');
@@ -288,9 +265,6 @@ export default function WorkerPanel() {
   if (!currentUser) return null;
 
   // --- Filtering Logic for Tabs ---
-
-  // Tab 1: Available Jobs
-  // Status is open, I haven't applied, and no one is assigned yet.
   const availableTabJobs = availableJobs.filter(job => {
     const hasApplied = job.applications.some(app => app.workerUsername === currentUser.username);
     const isAssigned = !!job.assignedWorkerUsername;
@@ -303,8 +277,6 @@ export default function WorkerPanel() {
     return job.status === 'open' && !hasApplied && !isAssigned && matchesSearch && matchesCategory && matchesBudget;
   });
 
-  // Tab 2: My Offers
-  // Jobs where I have an application.
   const myOffersJobs = availableJobs.filter(job => 
     job.applications.some(app => app.workerUsername === currentUser.username)
   ).map(job => {
@@ -312,14 +284,10 @@ export default function WorkerPanel() {
     return { job, application: myApp };
   });
 
-  // Tab 3: In Progress
-  // Status processing or awaiting_approval, assigned to me.
   const inProgressJobs = availableJobs.filter(job => 
-    (job.status === 'processing' || job.status === 'awaiting_approval') && job.assignedWorkerUsername === currentUser.username
+    job.status === 'processing' && job.assignedWorkerUsername === currentUser.username
   );
 
-  // Tab 4: Completed
-  // Status completed, assigned to me.
   const completedJobs = availableJobs.filter(job => 
     job.status === 'completed' && job.assignedWorkerUsername === currentUser.username
   );
@@ -336,9 +304,13 @@ export default function WorkerPanel() {
                 <HardHat className="text-blue-600" />
                 Worker Panel
               </h1>
-              <p className="text-gray-500 text-sm mt-1">
-                Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
-              </p>
+              <div className="flex items-center gap-2 mt-1">
+                <p className="text-gray-500 text-sm">
+                  Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
+                </p>
+                <GamificationBadges badges={badges} />
+                {showPremium && <PremiumBadge username={currentUser.username} role="worker" />}
+              </div>
             </div>
           </div>
           
@@ -357,28 +329,37 @@ export default function WorkerPanel() {
           </div>
         </div>
 
-        {/* Stats Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
-            <div className="bg-green-100 p-2.5 rounded-full text-green-600"><CheckSquare size={20} /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Jobs Completed</p>
-              <p className="text-xl font-bold text-gray-900">{stats.completed}</p>
+        {/* Stats Dashboard & Advanced Modules */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Stats */}
+          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <div className="bg-green-100 p-2.5 rounded-full text-green-600"><CheckSquare size={20} /></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Jobs Completed</p>
+                <p className="text-xl font-bold text-gray-900">{stats.completed}</p>
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <div className="bg-blue-100 p-2.5 rounded-full text-blue-600"><DollarSign size={20} /></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Total Earned</p>
+                <p className="text-xl font-bold text-gray-900">{stats.earned} ₼</p>
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+              <div className="bg-amber-100 p-2.5 rounded-full text-amber-600"><Star size={20} /></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Avg Rating</p>
+                <p className="text-xl font-bold text-gray-900">{stats.rating.toFixed(1)}</p>
+              </div>
             </div>
           </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
-            <div className="bg-blue-100 p-2.5 rounded-full text-blue-600"><DollarSign size={20} /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Total Earned</p>
-              <p className="text-xl font-bold text-gray-900">{stats.earned} ₼</p>
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
-            <div className="bg-amber-100 p-2.5 rounded-full text-amber-600"><Star size={20} /></div>
-            <div>
-              <p className="text-xs text-gray-500 font-medium">Avg Rating</p>
-              <p className="text-xl font-bold text-gray-900">{stats.rating.toFixed(1)}</p>
-            </div>
+
+          {/* Availability & Strength */}
+          <div className="lg:col-span-1 space-y-4">
+            <AvailabilityScheduler username={currentUser.username} />
           </div>
         </div>
 
@@ -393,6 +374,7 @@ export default function WorkerPanel() {
           <div className="flex border-b border-gray-100 overflow-x-auto">
             {[
               { id: 'available', label: 'Available Jobs', icon: Search, count: availableTabJobs.length },
+              { id: 'recommended', label: 'For You', icon: Sparkles, count: recommendedJobs.length },
               { id: 'offers', label: 'My Offers', icon: Briefcase, count: myOffersJobs.length },
               { id: 'progress', label: 'In Progress', icon: PlayCircle, count: inProgressJobs.length },
               { id: 'completed', label: 'Completed', icon: CheckSquare, count: completedJobs.length },
@@ -428,7 +410,6 @@ export default function WorkerPanel() {
             {/* 1. AVAILABLE JOBS TAB */}
             {activeTab === 'available' && (
               <div className="space-y-4">
-                {/* Filters */}
                 <div className="bg-white p-4 rounded-lg border border-gray-200 flex flex-wrap gap-3 items-center shadow-sm">
                   <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
                     <Filter size={16} /> Filters:
@@ -465,22 +446,15 @@ export default function WorkerPanel() {
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {availableTabJobs.map(job => {
-                      const inputs = applicationInputs[job.id] || { price: '', message: '', duration: '' };
-                      
-                      // Calculate best offer for Auction mode
-                      const bestOffer = job.applications.length > 0 
-                        ? Math.min(...job.applications.map(a => a.offeredPrice))
-                        : null;
+                      const inputs = applicationInputs[job.id] || { price: '', message: '' };
+                      const dist = showLoc ? getDistance(currentUser.username, job.address) : 0;
 
                       return (
                         <div key={job.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
                           <div className="p-5 flex-grow">
                             <div className="flex justify-between items-start mb-2">
                               <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-bold text-gray-900">{job.title}</h3>
-                                  {job.isAuction && <span className="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full font-bold">AUCTION</span>}
-                                </div>
+                                <h3 className="font-bold text-gray-900">{job.title}</h3>
                                 <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{job.category}</span>
                               </div>
                               <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2 py-1 rounded uppercase">Open</span>
@@ -489,59 +463,30 @@ export default function WorkerPanel() {
                             <div className="space-y-2 mt-3 text-sm text-gray-600">
                               <div className="flex items-center gap-2">
                                 <DollarSign size={14} className="text-gray-400" />
-                                {job.isAuction ? (
-                                  <span className="font-bold text-purple-600">
-                                    {bestOffer ? `Best Offer: ${bestOffer} ₼` : 'No bids yet'}
-                                  </span>
-                                ) : (
-                                  <span className="font-semibold text-gray-900">{job.budget} ₼</span>
-                                )}
+                                <span className="font-semibold text-gray-900">{job.budget} ₼</span>
                               </div>
                               <div className="flex items-center gap-2">
                                 <MapPin size={14} className="text-gray-400" />
                                 <span>{job.address}</span>
+                                {showLoc && (
+                                  <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                    <Map size={10} /> ~{dist}km
+                                  </span>
+                                )}
                               </div>
-                              <div className="flex items-center gap-2">
-                                <User size={14} className="text-gray-400" />
-                                <span>{job.employerUsername}</span>
-                              </div>
-                              {job.materials && job.materials !== 'Not needed' && (
-                                <div className="flex items-center gap-2">
-                                  <Box size={14} className="text-gray-400" />
-                                  <span>{job.materials}</span>
-                                </div>
-                              )}
-                              {job.media && job.media.length > 0 && (
-                                <div className="flex items-center gap-2 text-blue-600">
-                                  <ImageIcon size={14} />
-                                  <a href={job.media[0]} target="_blank" rel="noreferrer" className="hover:underline">View Media</a>
-                                </div>
-                              )}
                             </div>
                           </div>
                           
                           <div className="p-4 bg-gray-50 border-t border-gray-100 space-y-2">
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="relative">
-                                <DollarSign className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                                <input
-                                  type="number"
-                                  placeholder="Price (₼)"
-                                  value={inputs.price}
-                                  onChange={(e) => handleInputChange(job.id, 'price', e.target.value)}
-                                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                              </div>
-                              <div className="relative">
-                                <Clock className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                                <input
-                                  type="text"
-                                  placeholder="Duration (e.g. 2 days)"
-                                  value={inputs.duration}
-                                  onChange={(e) => handleInputChange(job.id, 'duration', e.target.value)}
-                                  className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                                />
-                              </div>
+                            <div className="relative">
+                              <DollarSign className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
+                              <input
+                                type="number"
+                                placeholder="Your Offer Price (₼)"
+                                value={inputs.price}
+                                onChange={(e) => handleInputChange(job.id, 'price', e.target.value)}
+                                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
                             </div>
                             <input
                               type="text"
@@ -554,7 +499,65 @@ export default function WorkerPanel() {
                               onClick={() => handleSendOffer(job.id, job.employerUsername)}
                               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
                             >
-                              <Send size={14} /> {job.isAuction ? 'Place Bid' : 'Send Offer'}
+                              <Send size={14} /> Send Offer
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 1.5 RECOMMENDED TAB */}
+            {activeTab === 'recommended' && (
+              <div className="space-y-4">
+                <div className="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-lg border border-purple-100 mb-4">
+                  <h3 className="font-bold text-purple-900 flex items-center gap-2">
+                    <Sparkles size={18} /> Recommended For You
+                  </h3>
+                  <p className="text-sm text-purple-700 mt-1">
+                    Based on your skills ({profileData.skills.join(', ') || 'None'}) and activity.
+                  </p>
+                </div>
+
+                {recommendedJobs.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <p>No specific recommendations yet. Add skills to your profile!</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {recommendedJobs.map(job => {
+                      const inputs = applicationInputs[job.id] || { price: '', message: '' };
+                      return (
+                        <div key={job.id} className="bg-white rounded-xl border-2 border-purple-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col relative">
+                          <div className="absolute top-0 right-0 bg-purple-500 text-white text-[10px] font-bold px-2 py-1 rounded-bl-lg">
+                            MATCH
+                          </div>
+                          <div className="p-5 flex-grow">
+                            <h3 className="font-bold text-gray-900">{job.title}</h3>
+                            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{job.category}</span>
+                            <div className="mt-2 text-sm text-gray-600">
+                              <span className="font-bold text-blue-600">{job.budget} ₼</span> • {job.address}
+                            </div>
+                          </div>
+                          <div className="p-4 bg-gray-50 border-t border-gray-100">
+                            <div className="relative mb-2">
+                              <DollarSign className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
+                              <input
+                                type="number"
+                                placeholder="Your Offer"
+                                value={inputs.price}
+                                onChange={(e) => handleInputChange(job.id, 'price', e.target.value)}
+                                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleSendOffer(job.id, job.employerUsername)}
+                              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+                            >
+                              Send Offer
                             </button>
                           </div>
                         </div>
@@ -578,23 +581,17 @@ export default function WorkerPanel() {
                   <div className="grid gap-4 md:grid-cols-2">
                     {myOffersJobs.map(({ job, application }) => (
                       <div key={application.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 relative">
-                        {/* Status Badge */}
                         <div className="absolute top-4 right-4">
                           <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase flex items-center gap-1 ${
                             application.status === 'accepted' ? 'bg-green-100 text-green-700' :
                             application.status === 'rejected' ? 'bg-red-100 text-red-700' :
                             'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {application.status === 'accepted' && <CheckCircle size={12} />}
-                            {application.status === 'rejected' && <XCircle size={12} />}
-                            {application.status === 'pending' && <ClockIcon size={12} />}
                             {application.status}
                           </span>
                         </div>
-
                         <h3 className="font-bold text-gray-900 text-lg pr-20">{job.title}</h3>
                         <p className="text-sm text-gray-500 mb-4">Employer: {job.employerUsername}</p>
-
                         <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                           <div className="bg-gray-50 p-2 rounded-lg">
                             <span className="block text-xs text-gray-400 uppercase">Your Offer</span>
@@ -605,7 +602,6 @@ export default function WorkerPanel() {
                             <span className="font-medium text-gray-700">{new Date(application.createdAt).toLocaleDateString()}</span>
                           </div>
                         </div>
-
                         {application.status === 'pending' && (
                           <button 
                             onClick={() => handleCancelOffer(job.id, application.id)}
@@ -613,12 +609,6 @@ export default function WorkerPanel() {
                           >
                             <Trash2 size={14} /> Cancel Offer
                           </button>
-                        )}
-                        
-                        {application.status === 'accepted' && (
-                          <div className="text-center text-sm text-green-600 font-medium bg-green-50 py-2 rounded-lg">
-                            Offer Accepted! Check "In Progress" tab.
-                          </div>
                         )}
                       </div>
                     ))}
@@ -647,7 +637,7 @@ export default function WorkerPanel() {
                               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">{job.category}</span>
                             </div>
                             <span className="bg-teal-100 text-teal-700 text-xs font-bold px-2 py-1 rounded uppercase flex items-center gap-1">
-                              <PlayCircle size={12} /> {job.status === 'awaiting_approval' ? 'Pending Approval' : 'In Progress'}
+                              <PlayCircle size={12} /> In Progress
                             </span>
                           </div>
 
@@ -660,47 +650,23 @@ export default function WorkerPanel() {
                               <DollarSign size={14} className="text-gray-400" />
                               <span>Accepted Price: <span className="font-bold text-green-600">{myApp?.offeredPrice} ₼</span></span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <MapPin size={14} className="text-gray-400" />
-                              <span>{job.address}</span>
-                            </div>
                           </div>
 
-                          {/* Job Flow Buttons */}
-                          <div className="flex flex-col gap-2 mt-4">
-                            {job.progress === 'not_started' && (
-                              <button 
-                                onClick={() => handleStartJob(job.id, job.employerUsername)}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2"
-                              >
-                                <PlayCircle size={16} /> Start Job
-                              </button>
-                            )}
-
-                            {job.progress === 'started' && job.status !== 'awaiting_approval' && (
-                              <button 
-                                onClick={() => handleMarkCompleted(job.id, job.employerUsername)}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2"
-                              >
-                                <CheckSquare size={16} /> Mark as Completed
-                              </button>
-                            )}
-
-                            {job.status === 'awaiting_approval' && (
-                              <div className="w-full bg-yellow-50 text-yellow-700 py-2 rounded-lg text-sm font-medium text-center border border-yellow-200">
-                                Waiting for employer approval...
-                              </div>
-                            )}
-
-                            <div className="flex gap-2">
-                              <ChatPanel 
-                                jobId={job.id} 
-                                currentUsername={currentUser.username} 
-                                otherUsername={job.employerUsername} 
-                                currentUserRole="worker"
-                                jobTitle={job.title}
-                              />
-                            </div>
+                          <div className="flex gap-2 mt-4">
+                            <ChatPanel 
+                              jobId={job.id} 
+                              currentUsername={currentUser.username} 
+                              otherUsername={job.employerUsername} 
+                              currentUserRole="worker"
+                              jobTitle={job.title}
+                            />
+                            <button 
+                              onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
+                              className="text-gray-400 hover:text-red-500 p-2"
+                              title="Report Issue"
+                            >
+                              <AlertTriangle size={18} />
+                            </button>
                           </div>
                         </div>
                       );
@@ -743,11 +709,6 @@ export default function WorkerPanel() {
                             </div>
                           </div>
 
-                          <div className="mb-4">
-                            <p className="text-xs text-gray-400 uppercase font-semibold mb-1">Completion Date</p>
-                            <p className="text-sm text-gray-700">{job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'N/A'}</p>
-                          </div>
-
                           <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
                             {review ? (
                               <div>
@@ -781,9 +742,13 @@ export default function WorkerPanel() {
         {/* Profile Edit Modal */}
         {isEditingProfile && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Profile</h3>
               
+              <div className="mb-6">
+                <ProfileStrength username={currentUser.username} />
+              </div>
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Short Bio</label>
@@ -793,30 +758,6 @@ export default function WorkerPanel() {
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
                     placeholder="Tell employers about yourself..."
                   />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Experience (Years)</label>
-                  <input 
-                    type="number" 
-                    value={profileData.experience || ''}
-                    onChange={(e) => setProfileData({...profileData, experience: Number(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Availability</label>
-                  <select 
-                    value={profileData.availability || 'Available'}
-                    onChange={(e) => setProfileData({...profileData, availability: e.target.value as WorkerAvailability})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  >
-                    <option value="Available">Available Now</option>
-                    <option value="Busy">Busy</option>
-                    <option value="Available in 24h">Available in 24h</option>
-                    <option value="Available in 48h">Available in 48h</option>
-                  </select>
                 </div>
 
                 <div>
@@ -845,38 +786,6 @@ export default function WorkerPanel() {
                     ))}
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Portfolio Images (URLs)</label>
-                  <div className="flex gap-2 mb-2">
-                    <input 
-                      type="text" 
-                      value={portfolioUrl}
-                      onChange={(e) => setPortfolioUrl(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="https://example.com/image.jpg"
-                    />
-                    <button 
-                      onClick={addPortfolioImage}
-                      className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {profileData.portfolio?.map((url, idx) => (
-                      <div key={idx} className="relative aspect-square bg-gray-100 rounded-lg overflow-hidden group">
-                        <img src={url} alt="Portfolio" className="w-full h-full object-cover" />
-                        <button 
-                          onClick={() => setProfileData(prev => ({ ...prev, portfolio: prev.portfolio?.filter((_, i) => i !== idx) }))}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <XCircle size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -896,6 +805,15 @@ export default function WorkerPanel() {
             </div>
           </div>
         )}
+
+        {/* Dispute Modal */}
+        <DisputeModal 
+          isOpen={disputeModal.isOpen} 
+          onClose={() => setDisputeModal({ ...disputeModal, isOpen: false })}
+          jobId={disputeModal.jobId}
+          openedBy={currentUser.username}
+          againstUser={disputeModal.against}
+        />
 
       </div>
     </div>
