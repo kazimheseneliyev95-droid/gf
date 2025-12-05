@@ -5,6 +5,8 @@ export type UserSession = {
   role: UserRole;
 };
 
+export type ServiceLevel = 'basic' | 'pro' | 'elite';
+
 export interface User {
   username: string;
   password?: string;
@@ -13,7 +15,9 @@ export interface User {
   location?: string; 
   coordinates?: { lat: number; lng: number };
   hasCompletedOnboarding?: boolean;
-  lastOnlineAt?: string; // Added for online status
+  lastOnlineAt?: string;
+  serviceLevel?: ServiceLevel; // NEW: Worker SLA Level
+  riskScore?: number;          // NEW: Calculated Risk Score
 }
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -132,6 +136,23 @@ export type JobMessage = {
   isReadByWorker: boolean;
 };
 
+export interface Conversation {
+  id: string; 
+  jobId: string;
+  employerUsername: string;
+  workerUsername: string;
+  lastMessage?: {
+    text: string;
+    createdAt: string;
+    senderUsername: string;
+  };
+  unreadCountForEmployer: number;
+  unreadCountForWorker: number;
+  updatedAt: string;
+  jobTitle: string;
+  jobStatus: JobStatus;
+}
+
 export type NotificationType = 
   | "newOffer"
   | "offerAccepted"
@@ -186,8 +207,8 @@ export type DisputeType = "employerReport" | "workerReport";
 export interface Dispute {
   id: string;
   jobId: string;
-  openedBy: string; // Username
-  createdByRole: UserRole; // 'employer' | 'worker'
+  openedBy: string; 
+  createdByRole: UserRole; 
   againstUser: string; 
   description: string;
   createdAt: string;
@@ -195,7 +216,7 @@ export interface Dispute {
   adminNotes?: string;
   resolvedAt?: string;
   problemType?: string;
-  type: DisputeType; // Explicit type
+  type: DisputeType; 
 }
 
 export interface ActivityLog {
@@ -236,12 +257,47 @@ export interface AdminSettings {
   }
 }
 
+// NEW: Analytics Types
+export type TimeRange = {
+  from: Date;
+  to: Date;
+};
+
+export type JobStageCounts = {
+  posted: number;
+  withOffer: number;
+  accepted: number;
+  completed: number;
+};
+
+export type CategoryPerformance = {
+  category: string;
+  jobCount: number;
+  jobsWithOffer: number;
+  avgFirstOfferMinutes?: number;
+  avgAcceptedMinutes?: number;
+  avgRating?: number;
+};
+
+export type UserRiskMetrics = {
+  userId: string;
+  role: 'worker' | 'employer';
+  disputesLast30d: number;
+  cancellationsLast30d: number;
+  accountsFromSameIp: number; // Mocked
+  totalCompletedJobs: number;
+  avgRating?: number;
+  riskScore: number; // 0–100
+  riskLevel: 'low' | 'medium' | 'high';
+};
+
 // Storage Keys
 export const JOB_STORAGE_KEY = 'jobPosts';
 export const REVIEW_STORAGE_KEY = 'workerReviews';
 export const WORKER_PROFILE_KEY = 'workerProfiles';
 export const EMPLOYER_PROFILE_KEY = 'employerProfiles';
 export const MESSAGE_STORAGE_KEY = 'jobMessages';
+export const CONVERSATION_STORAGE_KEY = 'conversations';
 export const NOTIFICATION_KEY = 'notifications';
 export const FAVORITE_WORKERS_KEY = 'favoriteWorkers';
 export const USERS_STORAGE_KEY = 'users';

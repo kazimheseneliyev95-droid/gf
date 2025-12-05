@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Filter, MapPin, DollarSign, Briefcase, HardHat, ArrowLeft, Sparkles, Gavel, User as UserIcon, PlayCircle, CheckSquare, Star, ShieldCheck } from 'lucide-react';
+import { Search, Filter, MapPin, DollarSign, Briefcase, HardHat, ArrowLeft, Sparkles, Gavel, User as UserIcon, ShieldCheck } from 'lucide-react';
 import { JobPost, JOB_STORAGE_KEY, JobCategory, JOB_CATEGORIES, UserRole, WORKER_PROFILE_KEY, WorkerProfileData, USERS_STORAGE_KEY, User, EMPLOYER_PROFILE_KEY, EmployerProfileData } from '../types';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { calculateTrustScore } from '../utils/advancedFeatures';
@@ -34,6 +34,16 @@ export default function HomeFeed() {
 
   const showAuction = isFeatureEnabled('auctionMode');
 
+  const loadData = () => {
+    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
+    if (allJobsStr) {
+      const allJobs: JobPost[] = JSON.parse(allJobsStr);
+      const sorted = allJobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setJobs(sorted);
+      setFilteredJobs(sorted);
+    }
+  };
+
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
     if (!sessionStr) {
@@ -43,14 +53,7 @@ export default function HomeFeed() {
     const user = JSON.parse(sessionStr);
     setCurrentUser(user);
 
-    // Load All Data
-    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
-    if (allJobsStr) {
-      const allJobs: JobPost[] = JSON.parse(allJobsStr);
-      const sorted = allJobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setJobs(sorted);
-      setFilteredJobs(sorted);
-    }
+    loadData();
 
     const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
     if (usersStr) {
@@ -104,7 +107,6 @@ export default function HomeFeed() {
                  (profile && profile.regions && profile.regions.some(r => r.toLowerCase().includes(lower)));
         });
       }
-      // Category filter for workers based on skills
       if (selectedCategory !== 'All') {
         result = result.filter(u => {
           const profile = workerProfiles.find(p => p.username === u.username);
@@ -114,6 +116,11 @@ export default function HomeFeed() {
       setFilteredWorkers(result);
     }
   }, [jobs, workers, searchTerm, selectedCategory, minBudget, currentUser, workerProfiles]);
+
+  const handleOfferSent = () => {
+    // Refresh data to show "Applied" status immediately
+    loadData();
+  };
 
   if (!currentUser) return null;
 
@@ -182,7 +189,6 @@ export default function HomeFeed() {
 
           {/* LIST CONTENT */}
           {isWorker ? (
-            // WORKER VIEW: JOBS
             <div className="grid gap-4 md:grid-cols-2">
               {filteredJobs.map(job => {
                 let isMatch = false;
@@ -257,7 +263,6 @@ export default function HomeFeed() {
               {filteredJobs.length === 0 && <p className="text-gray-500 text-center col-span-2 py-10">No jobs found.</p>}
             </div>
           ) : (
-            // EMPLOYER VIEW: WORKERS
             <div className="grid gap-4 md:grid-cols-2">
               {filteredWorkers.map(worker => {
                 const profile = workerProfiles.find(p => p.username === worker.username);
@@ -319,7 +324,6 @@ export default function HomeFeed() {
         {/* SIDEBAR */}
         <div className="lg:col-span-1 space-y-6">
           {isWorker ? (
-            // WORKER SIDEBAR: TOP EMPLOYERS
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Briefcase size={18} className="text-blue-600" /> Top Employers
@@ -341,7 +345,6 @@ export default function HomeFeed() {
               </div>
             </div>
           ) : (
-            // EMPLOYER SIDEBAR: YOUR JOBS
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Briefcase size={18} className="text-blue-600" /> Your Recent Jobs
@@ -371,6 +374,7 @@ export default function HomeFeed() {
             job={viewJob}
             currentWorkerUsername={isWorker ? currentUser.username : undefined}
             viewerRole={currentUser.role as 'worker' | 'employer'}
+            onOfferSent={handleOfferSent} // Connect the callback
           />
         )}
 

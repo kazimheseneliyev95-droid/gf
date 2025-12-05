@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send, Check } from 'lucide-react';
+import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send } from 'lucide-react';
 import { JobPost, JobApplication, JOB_STORAGE_KEY, JobCategory } from '../types';
 import { createNotification } from '../utils';
 import { logActivity } from '../utils/advancedFeatures';
@@ -8,12 +8,13 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   job: JobPost;
-  currentWorkerUsername?: string; // Optional now
-  viewerRole?: 'worker' | 'employer'; // New prop to control view mode
-  onReport?: () => void; // Optional report callback
+  currentWorkerUsername?: string;
+  viewerRole?: 'worker' | 'employer';
+  onReport?: () => void;
+  onOfferSent?: () => void; // NEW: Callback for state update
 }
 
-export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUsername, viewerRole = 'worker', onReport }: Props) {
+export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUsername, viewerRole = 'worker', onReport, onOfferSent }: Props) {
   const [offerPrice, setOfferPrice] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [canMeetDeadline, setCanMeetDeadline] = useState(true);
@@ -23,7 +24,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
   if (!isOpen) return null;
 
   const myApplication = currentWorkerUsername ? job.applications?.find(a => a.workerUsername === currentWorkerUsername) : null;
-  
   const canApply = viewerRole === 'worker' && job.status === 'open' && !myApplication && currentWorkerUsername;
 
   const handleSendOffer = () => {
@@ -31,7 +31,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
 
     setIsSubmitting(true);
     
-    // Simulate API delay
     setTimeout(() => {
       const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
       if (allJobsStr) {
@@ -59,9 +58,8 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
           
           setSuccessMsg("Offer sent successfully!");
           
-          // Force refresh logic would be ideal here, but since we are in a modal, 
-          // we can just show success. The parent component might need to refresh data.
-          // For now, we rely on the user closing the modal or navigating away.
+          // Notify parent to update UI
+          if (onOfferSent) onOfferSent();
         }
       }
       setIsSubmitting(false);
@@ -194,7 +192,7 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
             </div>
           )}
 
-          {/* My Application Status - Only for Worker View */}
+          {/* My Application Status */}
           {viewerRole === 'worker' && (myApplication || successMsg) ? (
             <div className={`p-4 rounded-xl border ${
               (myApplication?.status === 'accepted' || successMsg) ? 'bg-green-50 border-green-200' : 
@@ -284,29 +282,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
                   {isSubmitting ? 'Sending...' : 'Submit Offer'}
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Completion Info */}
-          {job.status === 'completed' && (
-            <div className="bg-gray-900 text-white p-4 rounded-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle className="text-green-400" size={20} />
-                <h3 className="font-bold">Job Completed</h3>
-              </div>
-              <p className="text-sm text-gray-300">
-                This job was marked as completed on {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Unknown date'}.
-              </p>
-              {job.completionChecklist?.worker && (
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-gray-400">
-                  <div className="flex items-center gap-2">
-                    <span className={job.completionChecklist.worker.workCompleted ? 'text-green-400' : 'text-red-400'}>●</span> Work Done
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={job.completionChecklist.worker.cleanupDone ? 'text-green-400' : 'text-red-400'}>●</span> Cleanup Done
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

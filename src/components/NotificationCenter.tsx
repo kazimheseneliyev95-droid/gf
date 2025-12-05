@@ -69,7 +69,7 @@ export default function NotificationCenter({ username }: NotificationCenterProps
       searchParams.set('jobId', n.jobId);
       if (n.section) searchParams.set('section', n.section);
       
-      // Append timestamp to force navigation change even if on same page
+      // CRITICAL: Add timestamp to force navigation change even if on same page
       searchParams.set('t', Date.now().toString());
       
       const basePath = currentUserRole === 'employer' ? '/employer' : '/worker';

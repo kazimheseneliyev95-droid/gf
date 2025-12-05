@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Star, User, ArrowLeft, MessageSquare, Heart, Briefcase, Clock, CheckSquare, Image as ImageIcon, Calendar, AlertTriangle, Eye } from 'lucide-react';
-import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, JobPost, JOB_STORAGE_KEY, WorkerAvailability, AVAILABILITY_STORAGE_KEY } from './types';
+import { WorkerReview, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, WorkerProfileData, FavoriteWorker, FAVORITE_WORKERS_KEY, JobPost, JOB_STORAGE_KEY, WorkerAvailability, AVAILABILITY_STORAGE_KEY, USERS_STORAGE_KEY, User as UserType } from './types';
 import { calculateWorkerQuality, getBadges } from './utils/advancedFeatures';
 import { isFeatureEnabled } from './utils/featureFlags';
 import GamificationBadges from './components/GamificationBadges';
 import PremiumBadge from './components/PremiumBadge';
 import BehaviorScore from './components/BehaviorScore';
 import JobDetailsModal from './components/JobDetailsModal';
+import ServiceLevelBadge from './components/ServiceLevelBadge';
 
 export default function WorkerProfile() {
   const { username } = useParams<{ username: string }>();
@@ -18,6 +19,7 @@ export default function WorkerProfile() {
   const [profileData, setProfileData] = useState<WorkerProfileData | null>(null);
   const [completedJobs, setCompletedJobs] = useState<JobPost[]>([]);
   const [availability, setAvailability] = useState<WorkerAvailability | null>(null);
+  const [workerUser, setWorkerUser] = useState<UserType | null>(null);
   
   const [currentUser, setCurrentUser] = useState<{ username: string, role: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -43,6 +45,14 @@ export default function WorkerProfile() {
 
   useEffect(() => {
     if (!username) return;
+
+    // Load User Data (for SLA)
+    const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+    if (usersStr) {
+      const users: UserType[] = JSON.parse(usersStr);
+      const target = users.find(u => u.username === username);
+      if (target) setWorkerUser(target);
+    }
 
     // Load Reviews
     const allReviewsStr = localStorage.getItem(REVIEW_STORAGE_KEY);
@@ -74,30 +84,18 @@ export default function WorkerProfile() {
       if (myAvail) setAvailability(myAvail);
     }
 
-    // Load Work History (Feature 7)
+    // Load Work History
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (allJobsStr) {
       const allJobs: JobPost[] = JSON.parse(allJobsStr);
       const history = allJobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed');
-      // Sort by completed date
       history.sort((a, b) => new Date(b.completedAt || b.createdAt).getTime() - new Date(a.completedAt || a.createdAt).getTime());
       setCompletedJobs(history);
 
-      // Calculate Top Categories
       const catCounts: Record<string, number> = {};
       history.forEach(j => {
         catCounts[j.category] = (catCounts[j.category] || 0) + 1;
       });
-      // Also weight skills
-      const profile = allProfilesStr ? JSON.parse(allProfilesStr).find((p: any) => p.username === username) : null;
-      if (profile && profile.skills) {
-        profile.skills.forEach((s: string) => {
-          // Try to match skill to category loosely
-          const matchingCat = Object.keys(catCounts).find(c => c.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(c.toLowerCase()));
-          if (matchingCat) catCounts[matchingCat] += 2;
-          else catCounts[s] = (catCounts[s] || 0) + 2; 
-        });
-      }
       
       const sortedCats = Object.entries(catCounts)
         .sort((a, b) => b[1] - a[1])
@@ -166,7 +164,6 @@ export default function WorkerProfile() {
           <div className="relative">
             <div className="w-24 h-24 bg-white border-4 border-white shadow-lg text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 relative">
               <User size={48} />
-              {/* Feature 4: Busy/Available Status */}
               {profileData?.availabilityStatus && (
                 <div className={`absolute bottom-0 right-0 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center ${
                   profileData.availabilityStatus === 'available' ? 'bg-green-500' : 'bg-gray-400'
@@ -183,6 +180,7 @@ export default function WorkerProfile() {
             <div className="flex items-center justify-center gap-2 mb-1">
               <h1 className="text-3xl font-bold text-gray-900">{username}</h1>
               {showPremium && <PremiumBadge username={username} role="worker" size="md" />}
+              {workerUser?.serviceLevel && <ServiceLevelBadge level={workerUser.serviceLevel} size="md" />}
             </div>
 
             {/* Availability Status Badge */}
@@ -245,12 +243,10 @@ export default function WorkerProfile() {
               <span className="text-gray-400 text-sm">({reviews.length} reviews)</span>
             </div>
 
-            {/* Bio */}
             {profileData?.bio && (
               <p className="text-gray-600 max-w-lg mx-auto italic mb-6">"{profileData.bio}"</p>
             )}
 
-            {/* Favorite Button (Employer Only) */}
             {currentUser?.role === 'employer' && (
               <button 
                 onClick={toggleFavorite}
@@ -267,9 +263,9 @@ export default function WorkerProfile() {
           </div>
         </div>
 
+        {/* Work History & Reviews Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
-          {/* Feature 7: Work History */}
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
@@ -277,7 +273,6 @@ export default function WorkerProfile() {
               </h2>
             </div>
 
-            {/* Specialized Categories */}
             {topCategories.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-2">
                 <span className="text-xs text-gray-500 font-medium py-1">Specialized in:</span>
@@ -307,7 +302,6 @@ export default function WorkerProfile() {
                       className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-all cursor-pointer group"
                     >
                       <div className="flex gap-3">
-                        {/* Thumbnail */}
                         <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0 overflow-hidden border border-gray-200 flex items-center justify-center">
                           {afterPhoto ? (
                             <img src={afterPhoto} alt="Job" className="w-full h-full object-cover" />
@@ -352,7 +346,6 @@ export default function WorkerProfile() {
             )}
           </div>
 
-          {/* Reviews List */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
               <MessageSquare className="text-blue-500" /> Reviews
@@ -396,13 +389,12 @@ export default function WorkerProfile() {
 
         </div>
 
-        {/* Job Details Modal (Read Only / Employer View) */}
         {viewJob && (
           <JobDetailsModal 
             isOpen={!!viewJob}
             onClose={() => setViewJob(null)}
             job={viewJob}
-            viewerRole="employer" // Assume employer view or generic view
+            viewerRole="employer"
           />
         )}
       </div>

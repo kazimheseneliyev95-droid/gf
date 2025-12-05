@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, Users, Briefcase, FileText, MessageSquare, Bell, Settings, 
   Shield, Search, Trash2, CheckCircle, XCircle, Lock, Unlock, BarChart2,
-  AlertTriangle, Activity, TrendingUp, Sliders
+  AlertTriangle, Activity, TrendingUp, Sliders, ShieldAlert, Layers
 } from 'lucide-react';
 import { 
   User, JobPost, WorkerReview, JobMessage, Notification,
@@ -14,9 +14,13 @@ import DisputeCenter from './components/DisputeCenter';
 import ActivityLogViewer from './components/ActivityLogViewer';
 import AdvancedSettings from './components/AdvancedSettings';
 import LTVDashboard from './components/LTVDashboard';
+import RiskMonitor from './components/RiskMonitor';
+import PlatformHealth from './components/PlatformHealth';
+import CategoryAnalytics from './components/CategoryAnalytics';
+import { updateServiceLevelsForWorkers } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
 
-type AdminTab = 'dashboard' | 'analytics' | 'ltv' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'disputes' | 'logs' | 'advanced' | 'settings';
+type AdminTab = 'dashboard' | 'analytics' | 'risk' | 'health' | 'categories' | 'ltv' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'disputes' | 'logs' | 'advanced' | 'settings';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
@@ -51,6 +55,9 @@ export default function AdminPanel() {
     } catch (e) {
       navigate('/');
     }
+
+    // Run SLA updates on admin load
+    updateServiceLevelsForWorkers();
 
     loadAllData();
   }, [navigate]);
@@ -132,6 +139,9 @@ export default function AdminPanel() {
           {[
             { id: 'dashboard', icon: Briefcase, label: 'Dashboard' },
             { id: 'analytics', icon: BarChart2, label: 'Analytics' },
+            { id: 'risk', icon: ShieldAlert, label: 'Risk Monitor' },
+            { id: 'health', icon: Activity, label: 'Platform Health' },
+            { id: 'categories', icon: Layers, label: 'Categories' },
             ...(showLTV ? [{ id: 'ltv', icon: TrendingUp, label: 'LTV Dashboard' }] : []),
             { id: 'users', icon: Users, label: 'Users' },
             { id: 'jobs', icon: FileText, label: 'Jobs' },
@@ -209,6 +219,10 @@ export default function AdminPanel() {
           </div>
         )}
 
+        {activeTab === 'risk' && <RiskMonitor />}
+        {activeTab === 'health' && <PlatformHealth />}
+        {activeTab === 'categories' && <CategoryAnalytics />}
+
         {activeTab === 'ltv' && showLTV && (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Lifetime Value (LTV) Analytics</h2>
@@ -238,6 +252,7 @@ export default function AdminPanel() {
                   <tr>
                     <th className="px-6 py-4 font-semibold">Username</th>
                     <th className="px-6 py-4 font-semibold">Role</th>
+                    <th className="px-6 py-4 font-semibold">Level</th>
                     <th className="px-6 py-4 font-semibold">Status</th>
                     <th className="px-6 py-4 font-semibold text-right">Actions</th>
                   </tr>
@@ -254,6 +269,15 @@ export default function AdminPanel() {
                         }`}>
                           {user.role}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {user.role === 'worker' && user.serviceLevel && user.serviceLevel !== 'basic' && (
+                          <span className={`px-2 py-1 rounded border text-xs font-bold uppercase ${
+                            user.serviceLevel === 'elite' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
+                            {user.serviceLevel}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {user.isActive !== false ? (
@@ -328,6 +352,9 @@ export default function AdminPanel() {
           </div>
         )}
 
+        {/* ... (Other tabs remain similar, omitted for brevity but assumed present) ... */}
+        {/* Reusing existing tab logic for offers, reviews, messages, notifications, disputes, logs, advanced, settings */}
+        
         {activeTab === 'offers' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-gray-900">All Offers</h2>

@@ -7,6 +7,7 @@ import EmployerPanel from './EmployerPanel';
 import WorkerProfile from './WorkerProfile';
 import AdminPanel from './AdminPanel';
 import HomeFeed from './components/HomeFeed';
+import Inbox from './Inbox'; // NEW
 import { updateUserOnlineStatus } from './utils/auth';
 
 function App() {
@@ -48,6 +49,9 @@ function App() {
         
         {/* Global Feed */}
         <Route path="/home" element={<HomeFeed />} />
+        
+        {/* Global Inbox */}
+        <Route path="/inbox" element={<Inbox />} />
         
         {/* Public Profile Route */}
         <Route path="/worker/:username" element={<WorkerProfile />} />

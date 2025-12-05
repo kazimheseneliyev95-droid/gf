@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, MapPin, Clock, List, Gavel, Edit2, Layout, DollarSign, X } from 'lucide-react';
-import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
+import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY, USERS_STORAGE_KEY, User as UserType, ServiceLevel } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
-import { createNotification, getWorkerAverageRating } from './utils';
+import { createNotification, getWorkerAverageRating, getChatUnreadCount } from './utils';
+import { getConversationByJob } from './utils/chatManager';
 
 import { getBadges, getRecommendedWorkers, calculateEmployerTrust, logActivity, getLowestBid, calculateWorkerQuality } from './utils/advancedFeatures';
 import { isWorkerAvailable, getDistance } from './utils/advancedAnalytics';
@@ -20,6 +21,7 @@ import EditJobModal from './components/EditJobModal';
 import EmployerProfileModal from './components/EmployerProfileModal';
 import CreateJobModal from './components/CreateJobModal';
 import TrustScoreDisplay from './components/TrustScoreDisplay';
+import ServiceLevelBadge from './components/ServiceLevelBadge';
 
 export default function EmployerPanel() {
   const navigate = useNavigate();
@@ -29,15 +31,23 @@ export default function EmployerPanel() {
   // Data State
   const [myJobs, setMyJobs] = useState<JobPost[]>([]);
   const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number, quality: number })[]>([]);
+  const [allWorkers, setAllWorkers] = useState<UserType[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
-  const [activeChatJobId, setActiveChatJobId] = useState<string | null>(null);
-  const [activeChatWorker, setActiveChatWorker] = useState<string | null>(null);
+  
+  // Lifted Chat State
+  const [chatSession, setChatSession] = useState<{
+    isOpen: boolean;
+    jobId: string;
+    partnerUsername: string;
+    jobTitle: string;
+  } | null>(null);
 
   const [suggestedWorkers, setSuggestedWorkers] = useState<{ username: string, score: number, matchReason: string }[]>([]);
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'processing' | 'completed'>('all');
   
   const [offerPriceMax, setOfferPriceMax] = useState<string>('');
   const [offerRatingMin, setOfferRatingMin] = useState<string>('');
+  const [offerLevelFilter, setOfferLevelFilter] = useState<'all' | 'pro' | 'elite'>('all');
 
   const [stats, setStats] = useState({ posted: 0, completed: 0, avgSpend: 0, open: 0 });
   const [badges, setBadges] = useState<any[]>([]);
@@ -71,6 +81,9 @@ export default function EmployerPanel() {
 
   const [checklistReviewJob, setChecklistReviewJob] = useState<JobPost | null>(null);
 
+  // Force refresh for chat previews
+  const [refreshTick, setRefreshTick] = useState(0);
+
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
     if (!sessionStr) {
@@ -87,14 +100,23 @@ export default function EmployerPanel() {
       loadMyJobs(user.username);
       loadFavorites(user.username);
       setBadges(getBadges(user.username, 'employer'));
+
+      const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+      if (usersStr) setAllWorkers(JSON.parse(usersStr).filter((u: UserType) => u.role === 'worker'));
+
     } catch (e) {
       navigate('/');
     }
+
+    const interval = setInterval(() => setRefreshTick(t => t + 1), 3000);
+    return () => clearInterval(interval);
   }, [navigate]);
 
+  // Handle URL params for chat & navigation
   useEffect(() => {
     const jobId = searchParams.get('jobId');
     const section = searchParams.get('section');
+    const t = searchParams.get('t'); // Timestamp
 
     if (jobId) {
       setExpandedJobId(jobId);
@@ -105,13 +127,20 @@ export default function EmployerPanel() {
         if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
 
-      if (section === 'chat') {
-        setActiveChatJobId(jobId);
-      } else {
-        setActiveChatJobId(null);
+      // Only open chat if explicitly requested
+      if (section === 'chat' && myJobs.length > 0) {
+        const job = myJobs.find(j => j.id === jobId);
+        if (job && job.assignedWorkerUsername) {
+          setChatSession({
+            isOpen: true,
+            jobId: job.id,
+            partnerUsername: job.assignedWorkerUsername,
+            jobTitle: job.title
+          });
+        }
       }
     }
-  }, [searchParams, myJobs.length]);
+  }, [searchParams, myJobs]);
 
   const loadMyJobs = (username: string) => {
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
@@ -207,6 +236,7 @@ export default function EmployerPanel() {
 
     if (currentUser) loadMyJobs(currentUser.username);
     createNotification(workerUsername, 'offerAccepted', jobId, { employerName: currentUser?.username }, 'details');
+    // NOTE: Chat is NOT automatically opened here.
   };
 
   const handleRejectOffer = (jobId: string, applicationId: string, workerUsername: string) => {
@@ -329,6 +359,10 @@ export default function EmployerPanel() {
     navigate('/');
   };
 
+  const getWorkerServiceLevel = (username: string): ServiceLevel | undefined => {
+    return allWorkers.find(u => u.username === username)?.serviceLevel;
+  };
+
   if (!currentUser) return null;
 
   const filteredJobs = myJobs.filter(j => filterStatus === 'all' || j.status === filterStatus);
@@ -352,6 +386,10 @@ export default function EmployerPanel() {
                 <span className="text-gray-300">|</span>
                 <Link to="/home" className="text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1">
                   <Home size={14} /> Home Feed
+                </Link>
+                <span className="text-gray-300">|</span>
+                <Link to="/inbox" className="text-gray-600 hover:text-purple-600 font-medium flex items-center gap-1">
+                  <MessageSquare size={14} /> Messages
                 </Link>
                 <span className="text-gray-300">|</span>
                 <button 
@@ -429,31 +467,37 @@ export default function EmployerPanel() {
                 <p className="text-sm text-gray-500 text-center py-4">No favorites yet.</p>
               ) : (
                 <div className="space-y-3">
-                  {favorites.map(fav => (
-                    <div key={fav.workerUsername} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 border border-gray-200">
-                          <User size={16} />
-                        </div>
-                        <div>
-                          <Link to={`/worker/${fav.workerUsername}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">
-                            {fav.workerUsername}
-                          </Link>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            {fav.rating > 0 && (
-                              <span className="text-amber-500 flex items-center gap-0.5">
-                                <Star size={10} fill="currentColor" /> {fav.rating.toFixed(1)}
-                              </span>
-                            )}
-                            <span className="text-green-600 font-semibold">{fav.quality}% Qual.</span>
+                  {favorites.map(fav => {
+                    const level = getWorkerServiceLevel(fav.workerUsername);
+                    return (
+                      <div key={fav.workerUsername} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-gray-500 border border-gray-200">
+                            <User size={16} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1">
+                              <Link to={`/worker/${fav.workerUsername}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">
+                                {fav.workerUsername}
+                              </Link>
+                              <ServiceLevelBadge level={level} size="sm" />
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                              {fav.rating > 0 && (
+                                <span className="text-amber-500 flex items-center gap-0.5">
+                                  <Star size={10} fill="currentColor" /> {fav.rating.toFixed(1)}
+                                </span>
+                              )}
+                              <span className="text-green-600 font-semibold">{fav.quality}% Qual.</span>
+                            </div>
                           </div>
                         </div>
+                        <Link to={`/worker/${fav.workerUsername}`} className="text-xs bg-white border border-gray-200 px-2 py-1 rounded text-gray-600 hover:text-blue-600 hover:border-blue-200">
+                          Profile
+                        </Link>
                       </div>
-                      <Link to={`/worker/${fav.workerUsername}`} className="text-xs bg-white border border-gray-200 px-2 py-1 rounded text-gray-600 hover:text-blue-600 hover:border-blue-200">
-                        Profile
-                      </Link>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -496,336 +540,380 @@ export default function EmployerPanel() {
               </div>
             ) : (
               <div className="grid gap-4">
-                {filteredJobs.map((job) => (
-                  <div key={job.id} id={`job-${job.id}`} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
-                    job.status === 'completed' ? 'border-gray-200 opacity-90' : 
-                    job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
-                  }`}>
-                    <div className="p-5">
-                      <div className="flex justify-between items-start">
-                        <div>
+                {filteredJobs.map((job) => {
+                  const conversation = job.assignedWorkerUsername 
+                    ? getConversationByJob(job.id, currentUser.username, 'employer') 
+                    : null;
+                  
+                  return (
+                    <div key={job.id} id={`job-${job.id}`} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
+                      job.status === 'completed' ? 'border-gray-200 opacity-90' : 
+                      job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
+                    }`}>
+                      <div className="p-5">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
+                              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
+                              {job.isAuction && showAuction && (
+                                <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1 border border-purple-200">
+                                  <Gavel size={10} /> Auction
+                                </span>
+                              )}
+                              {job.status === 'processing' && (
+                                <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
+                                  <PlayCircle size={10} /> Processing
+                                </span>
+                              )}
+                              {job.status === 'completed' && (
+                                <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
+                                  <CheckSquare size={10} /> Completed
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-blue-600 font-bold text-xl mt-1">
+                              {job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}
+                            </div>
+                          </div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
-                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
-                            {job.isAuction && showAuction && (
-                              <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1 border border-purple-200">
-                                <Gavel size={10} /> Auction
-                              </span>
-                            )}
-                            {job.status === 'processing' && (
-                              <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                                <PlayCircle size={10} /> Processing
-                              </span>
-                            )}
-                            {job.status === 'completed' && (
-                              <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1">
-                                <CheckSquare size={10} /> Completed
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-blue-600 font-bold text-xl mt-1">
-                            {job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => setEditJobModal({ isOpen: true, job })}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Edit Job"
-                          >
-                            <Edit2 size={18} />
-                          </button>
-                          <button onClick={() => handleDeleteJob(job.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">{job.description}</p>
-
-                      <div className="flex gap-4 mt-3 text-sm text-gray-600">
-                        <span className="flex items-center gap-1"><MapPin size={14} /> {job.address}</span>
-                        <span className="flex items-center gap-1"><Clock size={14} /> {job.daysToComplete} days</span>
-                        {job.materials && job.materials !== 'none' && (
-                          <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-0.5 rounded">
-                            Materials: {job.materials === 'by_employer' ? 'Employer' : 'Worker'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Job Actions */}
-                      <div className="mt-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <button 
-                            onClick={() => toggleApplications(job.id)}
-                            className={`flex items-center gap-2 text-sm font-medium transition-colors ${
-                              job.applications.length > 0 || job.status === 'open' ? 'text-blue-600 hover:text-blue-800' : 'text-gray-400'
-                            }`}
-                          >
-                            {expandedJobId === job.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            {job.applications.length > 0 
-                              ? `View ${job.applications.length} Offer${job.applications.length !== 1 ? 's' : ''}` 
-                              : 'Manage & Suggestions'}
-                          </button>
-                          
-                          {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
-                            <ChatPanel 
-                              jobId={job.id} 
-                              currentUsername={currentUser.username} 
-                              otherUsername={job.assignedWorkerUsername} 
-                              currentUserRole="employer"
-                              jobTitle={job.title}
-                              forceOpen={activeChatJobId === job.id}
-                            />
-                          )}
-
-                          {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
                             <button 
-                              onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.assignedWorkerUsername! })}
-                              className="text-red-500 hover:text-red-700 p-2 flex items-center gap-1 text-xs font-bold"
-                              title="Report a Problem"
+                              onClick={() => setEditJobModal({ isOpen: true, job })}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit Job"
                             >
-                              <AlertTriangle size={16} /> Report Problem
+                              <Edit2 size={18} />
                             </button>
+                            <button onClick={() => handleDeleteJob(job.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <p className="text-sm text-gray-600 mt-2 line-clamp-2">{job.description}</p>
+
+                        <div className="flex gap-4 mt-3 text-sm text-gray-600">
+                          <span className="flex items-center gap-1"><MapPin size={14} /> {job.address}</span>
+                          <span className="flex items-center gap-1"><Clock size={14} /> {job.daysToComplete} days</span>
+                          {job.materials && job.materials !== 'none' && (
+                            <span className="flex items-center gap-1 text-xs bg-gray-100 px-2 py-0.5 rounded">
+                              Materials: {job.materials === 'by_employer' ? 'Employer' : 'Worker'}
+                            </span>
                           )}
                         </div>
 
-                        {job.status === 'processing' && job.assignedWorkerUsername && (
-                          <button
-                            onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 transition-colors shadow-sm"
-                          >
-                            <CheckSquare size={14} /> 
-                            {job.completionChecklist?.worker?.workCompleted ? 'Review Completion' : 'Mark as Completed'}
-                          </button>
-                        )}
-                        
-                        {job.status === 'completed' && job.reviewed && (
-                          <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
-                            <Star size={12} fill="currentColor" /> Review Submitted
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Expanded Area: Offers & Suggestions */}
-                    {expandedJobId === job.id && (
-                      <div className="bg-gray-50 border-t border-gray-100 p-4 animate-in slide-in-from-top-2">
-                        
-                        {job.status === 'open' && (
-                          <div className="mb-6">
-                            <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-2">
-                              <Star size={12} /> Suggested Workers
-                            </h4>
-                            {suggestedWorkers.length === 0 ? (
-                              <p className="text-xs text-gray-500 italic">No suggestions found.</p>
-                            ) : (
-                              <div className="flex gap-3 overflow-x-auto pb-2">
-                                {suggestedWorkers.map(w => (
-                                  <div key={w.username} className="min-w-[200px] bg-white p-3 rounded-lg border border-purple-100 shadow-sm">
-                                    <div className="flex justify-between items-start">
-                                      <Link to={`/worker/${w.username}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">
-                                        {w.username}
-                                      </Link>
-                                      <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">{w.score.toFixed(0)}% Match</span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 mt-1">{w.matchReason}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="flex justify-between items-center mb-3">
-                          <div className="flex items-center gap-3">
-                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Worker Offers</h4>
-                            {job.isAuction && showAuction && (
-                              <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
-                                Best Offer: {getLowestBid(job) || '-'} ₼
+                        {/* Message Preview Strip */}
+                        {conversation && conversation.lastMessage && (
+                          <div className="mt-3 bg-purple-50/50 border border-purple-100 rounded-lg p-2 flex justify-between items-center">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <MessageSquare size={14} className="text-purple-400 flex-shrink-0" />
+                              <p className="text-xs text-gray-600 truncate">
+                                <span className="font-bold text-purple-700">{conversation.lastMessage.senderUsername}:</span> {conversation.lastMessage.text}
+                              </p>
+                            </div>
+                            {conversation.unreadCountForEmployer > 0 && (
+                              <span className="text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">
+                                {conversation.unreadCountForEmployer} new
                               </span>
                             )}
                           </div>
-                          <div className="flex gap-2 items-center">
-                            {showComparison && job.applications.length > 1 && (
+                        )}
+
+                        {/* Job Actions */}
+                        <div className="mt-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <button 
+                              onClick={() => toggleApplications(job.id)}
+                              className={`flex items-center gap-2 text-sm font-medium transition-colors ${
+                                job.applications.length > 0 || job.status === 'open' ? 'text-blue-600 hover:text-blue-800' : 'text-gray-400'
+                              }`}
+                            >
+                              {expandedJobId === job.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                              {job.applications.length > 0 
+                                ? `View ${job.applications.length} Offer${job.applications.length !== 1 ? 's' : ''}` 
+                                : 'Manage & Suggestions'}
+                            </button>
+                            
+                            {/* Chat Trigger Button */}
+                            {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
                               <button 
-                                onClick={() => setComparisonModal({ isOpen: true, job })}
-                                className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold flex items-center gap-1 hover:bg-blue-200 mr-2"
+                                onClick={() => setChatSession({
+                                  isOpen: true,
+                                  jobId: job.id,
+                                  partnerUsername: job.assignedWorkerUsername!,
+                                  jobTitle: job.title
+                                })}
+                                className="relative p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
+                                title="Open Chat"
                               >
-                                <List size={12} /> Compare
+                                <MessageSquare size={18} />
+                                {getChatUnreadCount(currentUser.username, 'employer', job.id) > 0 && (
+                                  <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+                                )}
                               </button>
                             )}
-                            <input 
-                              type="number" 
-                              placeholder="Max Price" 
-                              value={offerPriceMax}
-                              onChange={e => setOfferPriceMax(e.target.value)}
-                              className="w-20 px-2 py-1 text-xs border border-gray-200 rounded"
-                            />
-                            <input 
-                              type="number" 
-                              placeholder="Min Rating" 
-                              value={offerRatingMin}
-                              onChange={e => setOfferRatingMin(e.target.value)}
-                              className="w-20 px-2 py-1 text-xs border border-gray-200 rounded"
-                            />
+
+                            {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
+                              <button 
+                                onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.assignedWorkerUsername! })}
+                                className="text-red-500 hover:text-red-700 p-2 flex items-center gap-1 text-xs font-bold"
+                                title="Report a Problem"
+                              >
+                                <AlertTriangle size={16} /> Report Problem
+                              </button>
+                            )}
                           </div>
+
+                          {job.status === 'processing' && job.assignedWorkerUsername && (
+                            <button
+                              onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)}
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1 transition-colors shadow-sm"
+                            >
+                              <CheckSquare size={14} /> 
+                              {job.completionChecklist?.worker?.workCompleted ? 'Review Completion' : 'Mark as Completed'}
+                            </button>
+                          )}
+                          
+                          {job.status === 'completed' && job.reviewed && (
+                            <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
+                              <Star size={12} fill="currentColor" /> Review Submitted
+                            </span>
+                          )}
                         </div>
+                      </div>
 
-                        {job.applications.length === 0 ? (
-                          <p className="text-sm text-gray-500 italic text-center py-2">No workers have sent offers yet.</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {job.applications
-                              .filter(app => {
-                                if (offerPriceMax && app.offeredPrice > Number(offerPriceMax)) return false;
-                                if (offerRatingMin) {
-                                  const rating = getWorkerAverageRating(app.workerUsername);
-                                  if (rating < Number(offerRatingMin)) return false;
-                                }
-                                return true;
-                              })
-                              .sort((a, b) => {
-                                if (showAvail) {
-                                  const aAvail = isWorkerAvailable(a.workerUsername);
-                                  const bAvail = isWorkerAvailable(b.workerUsername);
-                                  if (aAvail && !bAvail) return -1;
-                                  if (!aAvail && bAvail) return 1;
-                                }
-                                if (showLoc) {
-                                  const aDist = getDistance(a.workerUsername, job.address);
-                                  const bDist = getDistance(b.workerUsername, job.address);
-                                  return aDist - bDist;
-                                }
-                                if (job.isAuction && showAuction) {
-                                  return a.offeredPrice - b.offeredPrice;
-                                }
-                                return 0;
-                              })
-                              .map((app) => {
-                                const isAvail = showAvail ? isWorkerAvailable(app.workerUsername) : false;
-                                const dist = showLoc ? getDistance(app.workerUsername, job.address) : 0;
-
-                                return (
-                                  <div key={app.id} className={`bg-white p-4 rounded-lg border shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 ${
-                                    app.status === 'accepted' ? 'border-green-200 ring-1 ring-green-100' : 'border-gray-200'
-                                  } ${app.status === 'rejected' ? 'opacity-60 bg-gray-50' : ''}`}>
-                                    
-                                    <div className="flex items-center gap-3 w-full sm:w-auto">
-                                      <div className={`p-2 rounded-full ${
-                                        app.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
-                                      }`}>
-                                        <User size={16} />
+                      {/* Expanded Area: Offers & Suggestions */}
+                      {expandedJobId === job.id && (
+                        <div className="bg-gray-50 border-t border-gray-100 p-4 animate-in slide-in-from-top-2">
+                          
+                          {job.status === 'open' && (
+                            <div className="mb-6">
+                              <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <Star size={12} /> Suggested Workers
+                              </h4>
+                              {suggestedWorkers.length === 0 ? (
+                                <p className="text-xs text-gray-500 italic">No suggestions found.</p>
+                              ) : (
+                                <div className="flex gap-3 overflow-x-auto pb-2">
+                                  {suggestedWorkers.map(w => {
+                                    const level = getWorkerServiceLevel(w.username);
+                                    return (
+                                      <div key={w.username} className="min-w-[200px] bg-white p-3 rounded-lg border border-purple-100 shadow-sm">
+                                        <div className="flex justify-between items-start">
+                                          <div className="flex flex-col">
+                                            <Link to={`/worker/${w.username}`} className="font-bold text-gray-900 text-sm hover:text-blue-600 hover:underline">
+                                              {w.username}
+                                            </Link>
+                                            <ServiceLevelBadge level={level} size="sm" />
+                                          </div>
+                                          <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">{w.score.toFixed(0)}% Match</span>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">{w.matchReason}</p>
                                       </div>
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <Link 
-                                            to={`/worker/${app.workerUsername}`}
-                                            className="text-sm font-bold text-gray-900 hover:text-blue-600 hover:underline"
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="flex justify-between items-center mb-3">
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Worker Offers</h4>
+                              {job.isAuction && showAuction && (
+                                <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                                  Best Offer: {getLowestBid(job) || '-'} ₼
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              {showComparison && job.applications.length > 1 && (
+                                <button 
+                                  onClick={() => setComparisonModal({ isOpen: true, job })}
+                                  className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold flex items-center gap-1 hover:bg-blue-200 mr-2"
+                                >
+                                  <List size={12} /> Compare
+                                </button>
+                              )}
+                              <select
+                                value={offerLevelFilter}
+                                onChange={e => setOfferLevelFilter(e.target.value as any)}
+                                className="px-2 py-1 text-xs border border-gray-200 rounded"
+                              >
+                                <option value="all">All Levels</option>
+                                <option value="pro">Pro & Elite</option>
+                                <option value="elite">Elite Only</option>
+                              </select>
+                              <input 
+                                type="number" 
+                                placeholder="Max Price" 
+                                value={offerPriceMax}
+                                onChange={e => setOfferPriceMax(e.target.value)}
+                                className="w-20 px-2 py-1 text-xs border border-gray-200 rounded"
+                              />
+                              <input 
+                                type="number" 
+                                placeholder="Min Rating" 
+                                value={offerRatingMin}
+                                onChange={e => setOfferRatingMin(e.target.value)}
+                                className="w-20 px-2 py-1 text-xs border border-gray-200 rounded"
+                              />
+                            </div>
+                          </div>
+
+                          {job.applications.length === 0 ? (
+                            <p className="text-sm text-gray-500 italic text-center py-2">No workers have sent offers yet.</p>
+                          ) : (
+                            <div className="space-y-3">
+                              {job.applications
+                                .filter(app => {
+                                  if (offerPriceMax && app.offeredPrice > Number(offerPriceMax)) return false;
+                                  if (offerRatingMin) {
+                                    const rating = getWorkerAverageRating(app.workerUsername);
+                                    if (rating < Number(offerRatingMin)) return false;
+                                  }
+                                  const level = getWorkerServiceLevel(app.workerUsername);
+                                  if (offerLevelFilter === 'elite' && level !== 'elite') return false;
+                                  if (offerLevelFilter === 'pro' && level !== 'pro' && level !== 'elite') return false;
+                                  return true;
+                                })
+                                .sort((a, b) => {
+                                  if (showAvail) {
+                                    const aAvail = isWorkerAvailable(a.workerUsername);
+                                    const bAvail = isWorkerAvailable(b.workerUsername);
+                                    if (aAvail && !bAvail) return -1;
+                                    if (!aAvail && bAvail) return 1;
+                                  }
+                                  if (showLoc) {
+                                    const aDist = getDistance(a.workerUsername, job.address);
+                                    const bDist = getDistance(b.workerUsername, job.address);
+                                    return aDist - bDist;
+                                  }
+                                  if (job.isAuction && showAuction) {
+                                    return a.offeredPrice - b.offeredPrice;
+                                  }
+                                  return 0;
+                                })
+                                .map((app) => {
+                                  const isAvail = showAvail ? isWorkerAvailable(app.workerUsername) : false;
+                                  const dist = showLoc ? getDistance(app.workerUsername, job.address) : 0;
+                                  const level = getWorkerServiceLevel(app.workerUsername);
+
+                                  return (
+                                    <div key={app.id} className={`bg-white p-4 rounded-lg border shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 ${
+                                      app.status === 'accepted' ? 'border-green-200 ring-1 ring-green-100' : 'border-gray-200'
+                                    } ${app.status === 'rejected' ? 'opacity-60 bg-gray-50' : ''}`}>
+                                      
+                                      <div className="flex items-center gap-3 w-full sm:w-auto">
+                                        <div className={`p-2 rounded-full ${
+                                          app.status === 'accepted' ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'
+                                        }`}>
+                                          <User size={16} />
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <Link 
+                                              to={`/worker/${app.workerUsername}`}
+                                              className="text-sm font-bold text-gray-900 hover:text-blue-600 hover:underline"
+                                            >
+                                              {app.workerUsername}
+                                            </Link>
+                                            <ServiceLevelBadge level={level} size="sm" />
+                                            {showPremium && <PremiumBadge username={app.workerUsername} role="worker" />}
+                                            {showBehavior && <BehaviorScore username={app.workerUsername} role="worker" />}
+                                            
+                                            {app.status === 'accepted' && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ACCEPTED</span>}
+                                            {app.status === 'rejected' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">REJECTED</span>}
+                                          </div>
+                                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                                            <span>{new Date(app.createdAt).toLocaleString()}</span>
+                                            {showAvail && (
+                                              <span className={`px-1.5 py-0.5 rounded font-bold ${isAvail ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                                {isAvail ? 'Available' : 'Busy'}
+                                              </span>
+                                            )}
+                                            {showLoc && (
+                                              <span className="flex items-center gap-0.5 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                <MapPin size={10} /> ~{dist}km
+                                              </span>
+                                            )}
+                                          </div>
+                                          {app.message && <p className="text-xs text-gray-600 mt-1 italic">"{app.message}"</p>}
+                                          {app.canMeetDeadline !== undefined && (
+                                            <p className={`text-xs mt-1 font-medium ${app.canMeetDeadline ? 'text-green-600' : 'text-red-500'}`}>
+                                              {app.canMeetDeadline ? '✓ Can meet deadline' : '⚠ Cannot meet deadline'}
+                                            </p>
+                                          )}
+                                          <RiskAlert username={app.workerUsername} />
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                                        <div className="text-right">
+                                          <span className="block text-lg font-bold text-blue-600">{app.offeredPrice} ₼</span>
+                                          <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
+                                        </div>
+
+                                        <div className="relative">
+                                          {/* Chat Trigger Button for Offer */}
+                                          <button 
+                                            onClick={() => setChatSession({
+                                              isOpen: true,
+                                              jobId: job.id,
+                                              partnerUsername: app.workerUsername,
+                                              jobTitle: job.title
+                                            })}
+                                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
+                                            title={`Chat with ${app.workerUsername}`}
                                           >
-                                            {app.workerUsername}
-                                          </Link>
-                                          {showPremium && <PremiumBadge username={app.workerUsername} role="worker" />}
-                                          {showBehavior && <BehaviorScore username={app.workerUsername} role="worker" />}
-                                          
-                                          {app.status === 'accepted' && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">ACCEPTED</span>}
-                                          {app.status === 'rejected' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-bold">REJECTED</span>}
+                                            <MessageSquare size={18} />
+                                          </button>
                                         </div>
-                                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
-                                          <span>{new Date(app.createdAt).toLocaleString()}</span>
-                                          {showAvail && (
-                                            <span className={`px-1.5 py-0.5 rounded font-bold ${isAvail ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
-                                              {isAvail ? 'Available' : 'Busy'}
-                                            </span>
-                                          )}
-                                          {showLoc && (
-                                            <span className="flex items-center gap-0.5 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                                              <MapPin size={10} /> ~{dist}km
-                                            </span>
-                                          )}
-                                        </div>
-                                        {app.message && <p className="text-xs text-gray-600 mt-1 italic">"{app.message}"</p>}
-                                        {app.canMeetDeadline !== undefined && (
-                                          <p className={`text-xs mt-1 font-medium ${app.canMeetDeadline ? 'text-green-600' : 'text-red-500'}`}>
-                                            {app.canMeetDeadline ? '✓ Can meet deadline' : '⚠ Cannot meet deadline'}
-                                          </p>
+
+                                        {job.status === 'open' && app.status === 'pending' && (
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => handleRejectOffer(job.id, app.id, app.workerUsername)}
+                                              className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 text-xs font-bold px-3 py-2 rounded-lg transition-colors"
+                                            >
+                                              Reject
+                                            </button>
+                                            <button
+                                              onClick={() => handleAcceptOffer(job.id, app.id, app.workerUsername)}
+                                              className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1"
+                                            >
+                                              <CheckCircle size={14} /> Accept
+                                            </button>
+                                          </div>
                                         )}
-                                        <RiskAlert username={app.workerUsername} />
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-                                      <div className="text-right">
-                                        <span className="block text-lg font-bold text-blue-600">{app.offeredPrice} ₼</span>
-                                        <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
-                                      </div>
-
-                                      <div className="relative">
-                                        <button 
-                                          onClick={() => {
-                                            setActiveChatJobId(job.id);
-                                            setActiveChatWorker(app.workerUsername);
-                                          }}
-                                          className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-full transition-colors"
-                                          title={`Chat with ${app.workerUsername}`}
-                                        >
-                                          <MessageSquare size={18} />
-                                        </button>
-                                        {activeChatJobId === job.id && activeChatWorker === app.workerUsername && (
-                                          <div className="absolute right-0 top-full mt-2 z-50">
-                                            <ChatPanel 
-                                              jobId={job.id} 
-                                              currentUsername={currentUser.username} 
-                                              otherUsername={app.workerUsername} 
-                                              currentUserRole="employer"
-                                              jobTitle={job.title}
-                                              forceOpen={true}
-                                            />
+                                        
+                                        {app.status === 'accepted' && (
+                                          <div className="text-green-600 flex items-center gap-1 text-xs font-bold bg-green-50 px-3 py-2 rounded-lg">
+                                            <CheckCircle size={14} /> Selected
                                           </div>
                                         )}
                                       </div>
-
-                                      {job.status === 'open' && app.status === 'pending' && (
-                                        <div className="flex gap-2">
-                                          <button
-                                            onClick={() => handleRejectOffer(job.id, app.id, app.workerUsername)}
-                                            className="bg-gray-100 hover:bg-red-100 text-gray-600 hover:text-red-600 text-xs font-bold px-3 py-2 rounded-lg transition-colors"
-                                          >
-                                            Reject
-                                          </button>
-                                          <button
-                                            onClick={() => handleAcceptOffer(job.id, app.id, app.workerUsername)}
-                                            className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg transition-colors shadow-sm flex items-center gap-1"
-                                          >
-                                            <CheckCircle size={14} /> Accept
-                                          </button>
-                                        </div>
-                                      )}
-                                      
-                                      {app.status === 'accepted' && (
-                                        <div className="text-green-600 flex items-center gap-1 text-xs font-bold bg-green-50 px-3 py-2 rounded-lg">
-                                          <CheckCircle size={14} /> Selected
-                                        </div>
-                                      )}
                                     </div>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                                  );
+                                })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
 
+        {/* ... (Modals omitted for brevity, same as before) ... */}
         {/* Checklist Review Modal */}
         {checklistReviewJob && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 animate-in zoom-in-95">
+             {/* ... Checklist Content ... */}
+             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 animate-in zoom-in-95">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Review Completion</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Worker has marked this job as complete. Please review their checklist.
@@ -871,10 +959,10 @@ export default function EmployerPanel() {
           </div>
         )}
 
-        {/* Rating Modal */}
         {ratingModal.isOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+             {/* ... Rating Content ... */}
+             <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
               <h3 className="text-xl font-bold text-gray-900 mb-2">Rate {ratingModal.workerUsername}</h3>
               <p className="text-sm text-gray-500 mb-6">Please rate your experience with this worker.</p>
               
@@ -917,47 +1005,24 @@ export default function EmployerPanel() {
           </div>
         )}
 
-        <DisputeModal 
-          isOpen={disputeModal.isOpen} 
-          onClose={() => setDisputeModal({ ...disputeModal, isOpen: false })}
-          jobId={disputeModal.jobId}
-          openedBy={currentUser.username}
-          againstUser={disputeModal.against}
-          role="employer"
-        />
+        <DisputeModal isOpen={disputeModal.isOpen} onClose={() => setDisputeModal({ ...disputeModal, isOpen: false })} jobId={disputeModal.jobId} openedBy={currentUser.username} againstUser={disputeModal.against} role="employer" />
+        {comparisonModal.isOpen && comparisonModal.job && <WorkerComparisonModal isOpen={comparisonModal.isOpen} onClose={() => setComparisonModal({ isOpen: false, job: null })} job={comparisonModal.job} applications={comparisonModal.job.applications} />}
+        {editJobModal.isOpen && editJobModal.job && <EditJobModal isOpen={editJobModal.isOpen} onClose={() => setEditJobModal({ isOpen: false, job: null })} job={editJobModal.job} onSave={() => loadMyJobs(currentUser.username)} currentUser={currentUser.username} />}
+        <EmployerProfileModal isOpen={profileModalOpen} onClose={() => setProfileModalOpen(false)} username={currentUser.username} currentUser={currentUser.username} />
+        <CreateJobModal isOpen={createJobModalOpen} onClose={() => setCreateJobModalOpen(false)} onSuccess={() => loadMyJobs(currentUser.username)} currentUser={currentUser.username} />
 
-        {comparisonModal.isOpen && comparisonModal.job && (
-          <WorkerComparisonModal 
-            isOpen={comparisonModal.isOpen}
-            onClose={() => setComparisonModal({ isOpen: false, job: null })}
-            job={comparisonModal.job}
-            applications={comparisonModal.job.applications}
+        {/* Global Chat Overlay */}
+        {chatSession && currentUser && (
+          <ChatPanel 
+            isOpen={chatSession.isOpen}
+            onClose={() => setChatSession(prev => prev ? { ...prev, isOpen: false } : null)}
+            jobId={chatSession.jobId}
+            currentUsername={currentUser.username}
+            otherUsername={chatSession.partnerUsername}
+            currentUserRole="employer"
+            jobTitle={chatSession.jobTitle}
           />
         )}
-
-        {editJobModal.isOpen && editJobModal.job && (
-          <EditJobModal 
-            isOpen={editJobModal.isOpen}
-            onClose={() => setEditJobModal({ isOpen: false, job: null })}
-            job={editJobModal.job}
-            onSave={() => loadMyJobs(currentUser.username)}
-            currentUser={currentUser.username}
-          />
-        )}
-
-        <EmployerProfileModal 
-          isOpen={profileModalOpen}
-          onClose={() => setProfileModalOpen(false)}
-          username={currentUser.username}
-          currentUser={currentUser.username}
-        />
-
-        <CreateJobModal 
-          isOpen={createJobModalOpen} 
-          onClose={() => setCreateJobModalOpen(false)} 
-          onSuccess={() => loadMyJobs(currentUser.username)}
-          currentUser={currentUser.username}
-        />
 
       </div>
     </div>
