@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send } from 'lucide-react';
-import { JobPost, JobApplication, JOB_STORAGE_KEY, JobCategory } from '../types';
+import React, { useState, useEffect } from 'react';
+import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send, ShieldCheck } from 'lucide-react';
+import { JobPost, JobApplication, JOB_STORAGE_KEY, EmployerProfileData } from '../types';
 import { createNotification } from '../utils';
-import { logActivity } from '../utils/advancedFeatures';
+import { logActivity, getEmployerProfile, calculateEmployerTrust } from '../utils/advancedFeatures';
 
 interface Props {
   isOpen: boolean;
@@ -11,7 +11,7 @@ interface Props {
   currentWorkerUsername?: string;
   viewerRole?: 'worker' | 'employer';
   onReport?: () => void;
-  onOfferSent?: () => void; // NEW: Callback for state update
+  onOfferSent?: () => void;
 }
 
 export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUsername, viewerRole = 'worker', onReport, onOfferSent }: Props) {
@@ -20,6 +20,17 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
   const [canMeetDeadline, setCanMeetDeadline] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  
+  const [employerProfile, setEmployerProfile] = useState<EmployerProfileData | null>(null);
+  const [employerTrust, setEmployerTrust] = useState(0);
+
+  useEffect(() => {
+    if (isOpen && job.employerUsername) {
+      const profile = getEmployerProfile(job.employerUsername);
+      if (profile) setEmployerProfile(profile);
+      setEmployerTrust(calculateEmployerTrust(job.employerUsername));
+    }
+  }, [isOpen, job.employerUsername]);
 
   if (!isOpen) return null;
 
@@ -58,7 +69,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
           
           setSuccessMsg("Offer sent successfully!");
           
-          // Notify parent to update UI
           if (onOfferSent) onOfferSent();
         }
       }
@@ -87,7 +97,6 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
             </div>
             <h2 className="text-2xl font-bold text-gray-900">{job.title}</h2>
             <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-              <span className="flex items-center gap-1"><User size={14} /> {job.employerUsername}</span>
               <span className="flex items-center gap-1"><Clock size={14} /> Posted {new Date(job.createdAt).toLocaleDateString()}</span>
             </div>
           </div>
@@ -99,6 +108,27 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-8">
           
+          {/* Employer Info */}
+          {viewerRole === 'worker' && (
+            <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                <User size={24} />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900">{employerProfile?.companyName || job.employerUsername}</h4>
+                <div className="flex items-center gap-3 text-xs text-gray-600 mt-1">
+                  <span className="flex items-center gap-1"><ShieldCheck size={12} className="text-green-600" /> Trust: {employerTrust}</span>
+                  {employerProfile?.activeHours && (
+                    <span className="flex items-center gap-1"><Clock size={12} /> {employerProfile.activeHours}</span>
+                  )}
+                  {employerProfile?.jobsPerMonth && (
+                    <span className="flex items-center gap-1"><Briefcase size={12} /> {employerProfile.jobsPerMonth} jobs/mo</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Main Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">

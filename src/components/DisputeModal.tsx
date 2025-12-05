@@ -22,9 +22,9 @@ const EMPLOYER_PROBLEM_TYPES = [
 
 const WORKER_PROBLEM_TYPES = [
   "Employer didn't pay as agreed",
-  "Employer changed requirements unfairly",
-  "Job conditions were unsafe",
-  "Communication / behavior issue",
+  "Employer changed the job terms",
+  "Employer is unresponsive",
+  "Safety concerns",
   "Other"
 ];
 
@@ -35,7 +35,7 @@ export default function DisputeModal({ isOpen, onClose, jobId, openedBy, against
   if (!isOpen) return null;
 
   const problemTypes = role === 'employer' ? EMPLOYER_PROBLEM_TYPES : WORKER_PROBLEM_TYPES;
-  const title = role === 'employer' ? "Report a Problem with Worker" : "Report a Problem with Job/Employer";
+  const title = role === 'employer' ? "Report a Problem with Worker" : "Report a Problem with Employer";
 
   const handleSubmit = () => {
     if (!description.trim()) return;

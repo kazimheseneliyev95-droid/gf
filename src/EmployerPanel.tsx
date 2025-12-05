@@ -20,7 +20,7 @@ import EmployerProfileModal from './components/EmployerProfileModal';
 import CreateJobModal from './components/CreateJobModal';
 import TrustScoreDisplay from './components/TrustScoreDisplay';
 import ServiceLevelBadge from './components/ServiceLevelBadge';
-import ActivityModal from './components/ActivityModal'; // RESTORED: Compact Activity
+import ActivityModal from './components/ActivityModal'; 
 import HelpModal from './components/HelpModal';
 
 export default function EmployerPanel() {
@@ -58,7 +58,7 @@ export default function EmployerPanel() {
   const [createJobModalOpen, setCreateJobModalOpen] = useState(false);
   const [ratingModal, setRatingModal] = useState<{ isOpen: boolean, jobId: string | null, workerUsername: string | null }>({ isOpen: false, jobId: null, workerUsername: null });
   const [helpModalOpen, setHelpModalOpen] = useState(false);
-  const [activityModalOpen, setActivityModalOpen] = useState(false); // RESTORED
+  const [activityModalOpen, setActivityModalOpen] = useState(false); 
   
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
@@ -301,7 +301,6 @@ export default function EmployerPanel() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* RESTORED: Compact Activity Button */}
             <button onClick={() => setActivityModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600" title="Recent Activity">
               <History size={20} />
             </button>
@@ -350,10 +349,10 @@ export default function EmployerPanel() {
           </div>
         </div>
 
-        {/* Main Content Grid: Optimized Layout */}
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
-          {/* Left Column: Favorites (Activity moved to modal) */}
+          {/* Left Column: Favorites */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -382,7 +381,7 @@ export default function EmployerPanel() {
             </div>
           </div>
 
-          {/* Right Column: Jobs (Expanded to 3 cols) */}
+          {/* Right Column: Jobs */}
           <div className="lg:col-span-3 space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-gray-800">My Posted Jobs</h2>
@@ -411,8 +410,9 @@ export default function EmployerPanel() {
                             <div className="flex items-center gap-2">
                               <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
                               <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
-                              {job.status === 'processing' && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Processing</span>}
+                              {job.status === 'processing' && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">In Progress</span>}
                               {job.status === 'completed' && <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Completed</span>}
+                              {job.status === 'open' && <span className="bg-green-50 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Open</span>}
                             </div>
                             <div className="text-blue-600 font-bold text-xl mt-1">{job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}</div>
                           </div>

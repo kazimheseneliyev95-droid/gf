@@ -29,9 +29,8 @@ import EmployerProfileModal from './components/EmployerProfileModal';
 import JobDetailsModal from './components/JobDetailsModal';
 import TrustScoreDisplay from './components/TrustScoreDisplay';
 import ServiceLevelBadge from './components/ServiceLevelBadge';
-import ActivityModal from './components/ActivityModal'; // RESTORED
+import ActivityModal from './components/ActivityModal'; 
 import HelpModal from './components/HelpModal';
-import JobStageStepper from './components/JobStageStepper'; // RESTORED: Multi-stage view
 
 type Tab = 'available' | 'recommended' | 'saved' | 'offers' | 'progress' | 'completed';
 
@@ -84,7 +83,7 @@ export default function WorkerPanel() {
   const [employerProfileModal, setEmployerProfileModal] = useState<{isOpen: boolean, username: string | null}>({ isOpen: false, username: null });
   const [viewJobModal, setViewJobModal] = useState<{isOpen: boolean, job: JobPost | null}>({ isOpen: false, job: null });
   const [helpModalOpen, setHelpModalOpen] = useState(false);
-  const [activityModalOpen, setActivityModalOpen] = useState(false); // RESTORED
+  const [activityModalOpen, setActivityModalOpen] = useState(false); 
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
@@ -414,6 +413,15 @@ export default function WorkerPanel() {
   const inProgressJobs = availableJobs.filter(job => job.status === 'processing' && job.assignedWorkerUsername === currentUser.username);
   const completedJobs = availableJobs.filter(job => job.status === 'completed' && job.assignedWorkerUsername === currentUser.username);
 
+  const getStatusBadge = (job: JobPost, myApp?: JobApplication) => {
+    if (job.status === 'completed') return <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded text-xs font-bold uppercase">Completed</span>;
+    if (job.status === 'processing') return <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold uppercase">In Progress</span>;
+    if (myApp?.status === 'accepted') return <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs font-bold uppercase">Accepted</span>;
+    if (myApp?.status === 'pending') return <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase">Applied</span>;
+    if (myApp?.status === 'rejected') return <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold uppercase">Rejected</span>;
+    return <span className="bg-green-50 text-green-600 px-2 py-0.5 rounded text-xs font-bold uppercase">New</span>;
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -446,7 +454,6 @@ export default function WorkerPanel() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {/* RESTORED: Compact Activity Button */}
             <button onClick={() => setActivityModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600" title="Recent Activity">
               <History size={20} />
             </button>
@@ -474,7 +481,6 @@ export default function WorkerPanel() {
           </div>
           <div className="lg:col-span-1 space-y-4">
             <AvailabilityScheduler username={currentUser.username} />
-            {/* ActivityTimeline removed from here, moved to modal */}
           </div>
         </div>
 
@@ -546,6 +552,7 @@ export default function WorkerPanel() {
                               <div className="flex gap-2 mt-1">
                                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
                                 {activeTab === 'recommended' && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold flex items-center gap-1"><Sparkles size={10} /> Recommended</span>}
+                                {getStatusBadge(job, myApp)}
                               </div>
                             </div>
                             <div className="flex gap-2">
@@ -557,12 +564,10 @@ export default function WorkerPanel() {
                             </div>
                           </div>
                           
-                          {/* RESTORED: Job Stage Stepper */}
-                          <JobStageStepper job={job} application={myApp} currentWorkerUsername={currentUser.username} />
-
                           <div className="space-y-2 text-sm text-gray-600 mt-3">
                             <div className="flex items-center gap-2"><DollarSign size={14} className="text-gray-400" /><span className="font-semibold text-gray-900">{job.budget} ₼</span></div>
                             <div className="flex items-center gap-2"><MapPin size={14} className="text-gray-400" /><span>{job.address}</span></div>
+                            <div className="flex items-center gap-2"><User size={14} className="text-gray-400" /><span>{job.employerUsername}</span></div>
                           </div>
                           <div className="mt-4 pt-4 border-t border-gray-100">
                             <div className="flex gap-2 mb-2">
@@ -578,16 +583,22 @@ export default function WorkerPanel() {
                 )}
               </div>
             )}
-            {/* Other tabs logic (Saved, Offers, Progress, Completed) remains similar to previous implementation */}
+            
             {activeTab === 'saved' && (
               <div className="grid gap-4 md:grid-cols-2">
                 {savedTabJobs.map(job => {
                   const myApp = job.applications?.find(a => a.workerUsername === currentUser.username);
                   return (
                     <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-                      <h3 className="font-bold">{job.title}</h3>
-                      <JobStageStepper job={job} application={myApp} currentWorkerUsername={currentUser.username} />
-                      <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-sm hover:underline mt-2">View Details</button>
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-gray-900">{job.title}</h3>
+                        {getStatusBadge(job, myApp)}
+                      </div>
+                      <div className="mt-2 text-sm text-gray-600">
+                        <p>{job.category} • {job.budget} ₼</p>
+                        <p className="text-xs text-gray-400 mt-1">{job.address}</p>
+                      </div>
+                      <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-sm hover:underline mt-3 font-medium">View Details</button>
                     </div>
                   );
                 })}
@@ -601,12 +612,16 @@ export default function WorkerPanel() {
                     <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3">
                       <div className="flex justify-between items-center">
                         <div>
-                          <h3 className="font-bold">{job.title}</h3>
+                          <h3 className="font-bold text-gray-900">{job.title}</h3>
                           <p className="text-sm text-gray-500">Offered: {myApp?.offeredPrice} ₼</p>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${myApp?.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{myApp?.status}</span>
+                        {getStatusBadge(job, myApp)}
                       </div>
-                      <JobStageStepper job={job} application={myApp} currentWorkerUsername={currentUser.username} />
+                      <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <span className="flex items-center gap-1"><MapPin size={14} /> {job.address}</span>
+                        <span className="flex items-center gap-1"><User size={14} /> {job.employerUsername}</span>
+                      </div>
+                      <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-sm font-medium hover:underline self-start">View Details</button>
                     </div>
                   );
                 })}
@@ -614,28 +629,109 @@ export default function WorkerPanel() {
             )}
             {activeTab === 'progress' && (
               <div className="space-y-4">
-                {inProgressJobs.map(job => (
-                  <div key={job.id} className="bg-white p-5 rounded-xl border border-blue-200 shadow-sm">
-                    <div className="flex justify-between mb-4">
-                      <h3 className="font-bold">{job.title}</h3>
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold">IN PROGRESS</span>
+                {inProgressJobs.map(job => {
+                  const myApp = job.applications?.find(a => a.workerUsername === currentUser.username);
+                  return (
+                    <div 
+                      key={job.id} 
+                      onClick={() => setViewJobModal({ isOpen: true, job })}
+                      className="bg-white rounded-xl border border-blue-200 shadow-sm p-5 hover:shadow-md transition-all cursor-pointer relative group"
+                    >
+                      {/* Header */}
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
+                          <div className="flex gap-2 mt-1">
+                            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
+                            {getStatusBadge(job, myApp)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Details Grid */}
+                      <div className="grid grid-cols-2 gap-y-2 text-sm text-gray-600 mb-4">
+                        <div className="flex items-center gap-2">
+                          <DollarSign size={14} className="text-gray-400" />
+                          <span className="font-bold text-gray-900">
+                            {myApp ? `${myApp.offeredPrice} ₼ (Agreed)` : `${job.budget} ₼`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MapPin size={14} className="text-gray-400" />
+                          <span className="truncate">{job.address}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <ClockIcon size={14} className="text-gray-400" />
+                          <span>{job.daysToComplete} Days est.</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <User size={14} className="text-gray-400" />
+                          <span>{job.employerUsername}</span>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-3 pt-2 border-t border-gray-100 mt-2">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setChatSession({ isOpen: true, jobId: job.id, partnerUsername: job.employerUsername, jobTitle: job.title });
+                          }} 
+                          className="flex-1 flex items-center justify-center gap-2 bg-purple-50 hover:bg-purple-100 text-purple-700 py-2.5 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          <MessageSquare size={16} /> Chat
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername });
+                          }} 
+                          className="flex-1 flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 text-red-600 py-2.5 rounded-lg font-bold text-sm transition-colors"
+                        >
+                          <AlertTriangle size={16} /> Report
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCompletionModal({ isOpen: true, job });
+                          }} 
+                          className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm"
+                        >
+                          <CheckSquare size={16} /> Complete
+                        </button>
+                      </div>
                     </div>
-                    <JobStageStepper job={job} currentWorkerUsername={currentUser.username} />
-                    <div className="flex gap-2 mt-4">
-                      <button onClick={() => setChatSession({ isOpen: true, jobId: job.id, partnerUsername: job.employerUsername, jobTitle: job.title })} className="flex-1 bg-purple-50 text-purple-700 py-2 rounded font-bold text-sm">Chat</button>
-                      <button onClick={() => setCompletionModal({ isOpen: true, job })} className="flex-1 bg-green-600 text-white py-2 rounded font-bold text-sm">Complete</button>
-                    </div>
+                  );
+                })}
+                {inProgressJobs.length === 0 && (
+                  <div className="text-center py-12 bg-white rounded-xl border border-gray-200 text-gray-500">
+                    <PlayCircle size={48} className="mx-auto text-gray-300 mb-3" />
+                    <p>No jobs in progress.</p>
                   </div>
-                ))}
+                )}
               </div>
             )}
             {activeTab === 'completed' && (
               <div className="space-y-4">
                 {completedJobs.map(job => (
-                  <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm opacity-80 hover:opacity-100 transition-opacity">
-                    <h3 className="font-bold">{job.title}</h3>
-                    <JobStageStepper job={job} currentWorkerUsername={currentUser.username} />
-                    <p className="text-sm text-gray-500 mt-2">Completed on {new Date(job.completedAt!).toLocaleDateString()}</p>
+                  <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm opacity-90 hover:opacity-100 transition-opacity">
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-bold text-gray-900">{job.title}</h3>
+                      {getStatusBadge(job)}
+                    </div>
+                    <div className="mt-2 text-sm text-gray-600">
+                      <p>Completed on {new Date(job.completedAt!).toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-400 mt-1">{job.address}</p>
+                    </div>
+                    <div className="flex gap-3 mt-4">
+                      <button 
+                        onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
+                        className="text-red-500 text-xs font-bold hover:underline flex items-center gap-1"
+                      >
+                        <AlertTriangle size={12} /> Report Problem
+                      </button>
+                      <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-xs font-bold hover:underline ml-auto">View Details</button>
+                    </div>
                   </div>
                 ))}
               </div>

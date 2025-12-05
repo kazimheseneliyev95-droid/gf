@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, X, Check, CheckCheck } from 'lucide-react';
+import { Send, X, Check, CheckCheck, Briefcase, User } from 'lucide-react';
 import { JobMessage, MESSAGE_STORAGE_KEY } from '../types';
 import { getUserOnlineStatus } from '../utils/auth';
 import { sendMessage, markConversationAsRead } from '../utils/chatManager';
@@ -110,41 +110,49 @@ export default function ChatPanel({
 
   return (
     <>
+      {/* Background Overlay */}
       <div className="fixed inset-0 bg-black/50 z-[60] backdrop-blur-sm" onClick={onClose} />
       
-      <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-[70] bg-white w-full sm:w-96 h-[85vh] sm:h-[500px] sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-4 border border-gray-200">
+      {/* Chat Window */}
+      <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-[70] bg-white w-full sm:w-96 h-[85vh] sm:h-[550px] sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-4 border border-gray-200 overflow-hidden">
         
         {/* Header */}
-        <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-purple-600 text-white sm:rounded-t-2xl shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-sm font-bold border-2 border-purple-400">
-                {otherUsername.substring(0, 2).toUpperCase()}
-              </div>
-              {otherUserStatus.isOnline && (
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-purple-600 rounded-full"></div>
-              )}
-            </div>
-            <div>
-              <h3 className="font-bold text-base leading-tight">{otherUsername}</h3>
-              <div className="flex items-center gap-1 text-xs text-purple-200">
-                {otherUserStatus.isOnline ? (
-                  <span className="text-green-300 font-bold flex items-center gap-1">● Online</span>
-                ) : (
-                  <span>Last seen {otherUserStatus.lastSeen ? formatLastSeen(otherUserStatus.lastSeen) : 'recently'}</span>
+        <div className="p-4 border-b border-gray-100 bg-purple-600 text-white">
+          <div className="flex justify-between items-start">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-sm font-bold border-2 border-purple-400">
+                  {otherUsername.substring(0, 2).toUpperCase()}
+                </div>
+                {otherUserStatus.isOnline && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-400 border-2 border-purple-600 rounded-full"></div>
                 )}
               </div>
+              <div>
+                <h3 className="font-bold text-base leading-tight flex items-center gap-2">
+                  {otherUsername}
+                  <span className="text-[10px] bg-purple-700 px-1.5 py-0.5 rounded uppercase tracking-wide opacity-80">
+                    {currentUserRole === 'employer' ? 'Worker' : 'Employer'}
+                  </span>
+                </h3>
+                <div className="flex items-center gap-1 text-xs text-purple-200">
+                  {otherUserStatus.isOnline ? (
+                    <span className="text-green-300 font-bold flex items-center gap-1">● Online</span>
+                  ) : (
+                    <span>Last seen {otherUserStatus.lastSeen ? formatLastSeen(otherUserStatus.lastSeen) : 'recently'}</span>
+                  )}
+                </div>
+              </div>
             </div>
+            <button onClick={onClose} className="text-purple-100 hover:text-white hover:bg-purple-500 p-2 rounded-full transition-colors">
+              <X size={20} />
+            </button>
           </div>
-          <button onClick={onClose} className="text-purple-100 hover:text-white hover:bg-purple-500 p-2 rounded-full transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-        
-        {/* Job Context Bar */}
-        <div className="px-4 py-2 bg-purple-50 border-b border-purple-100 text-xs text-purple-900 font-medium flex items-center gap-2">
-          <span className="bg-purple-200 text-purple-800 px-1.5 py-0.5 rounded text-[10px] uppercase font-bold">Job</span>
-          <span className="truncate">{jobTitle}</span>
+          
+          <div className="mt-3 flex items-center gap-2 text-xs text-purple-100 bg-purple-700/50 px-3 py-1.5 rounded-lg w-fit">
+            <Briefcase size={12} />
+            <span className="font-medium truncate max-w-[200px]">{jobTitle}</span>
+          </div>
         </div>
 
         {/* Messages Area */}

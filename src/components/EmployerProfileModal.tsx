@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Briefcase, MapPin, CheckSquare, DollarSign, User, Star } from 'lucide-react';
+import { X, Save, Briefcase, MapPin, CheckSquare, DollarSign, User, Star, Clock } from 'lucide-react';
 import { EmployerProfileData, JOB_CATEGORIES } from '../types';
 import { getEmployerProfile, saveEmployerProfile, calculateEmployerTrust } from '../utils/advancedFeatures';
 
@@ -17,10 +17,11 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
     companyName: '',
     city: '',
     bio: '',
-    preferredCategories: []
+    preferredCategories: [],
+    activeHours: '',
+    jobsPerMonth: ''
   });
   const [trustScore, setTrustScore] = useState(0);
-  const [stats, setStats] = useState({ posted: 0, completed: 0, spent: 0 });
 
   useEffect(() => {
     if (isOpen) {
@@ -29,11 +30,6 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
       else setProfile(prev => ({ ...prev, username })); // Reset if new
 
       setTrustScore(calculateEmployerTrust(username));
-      
-      // Calculate Stats (Mock derived from job storage would go here, simplified for UI)
-      // For now we rely on parent passing stats or just fetching them again if needed.
-      // To keep it simple, we won't re-fetch all jobs here unless necessary. 
-      // We can just show the Trust Score which is the main metric.
     }
   }, [isOpen, username]);
 
@@ -118,6 +114,41 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
                 />
               </div>
             )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Active Hours</label>
+                {readOnly ? (
+                  <p className="text-sm text-gray-800 flex items-center gap-1">
+                    <Clock size={14} className="text-gray-400" /> {profile.activeHours || "Not specified"}
+                  </p>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={profile.activeHours || ''} 
+                    onChange={e => setProfile({...profile, activeHours: e.target.value})}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. Mon-Fri 9am-6pm"
+                  />
+                )}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Jobs per Month</label>
+                {readOnly ? (
+                  <p className="text-sm text-gray-800 flex items-center gap-1">
+                    <Briefcase size={14} className="text-gray-400" /> {profile.jobsPerMonth || "N/A"}
+                  </p>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={profile.jobsPerMonth || ''} 
+                    onChange={e => setProfile({...profile, jobsPerMonth: e.target.value})}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="e.g. 5-10"
+                  />
+                )}
+              </div>
+            </div>
 
             <div>
               <label className="block text-xs font-bold text-gray-700 mb-1">About</label>

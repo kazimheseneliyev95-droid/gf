@@ -130,6 +130,8 @@ export type EmployerProfileData = {
   preferredCategories?: string[];
   // Extended fields
   budgetRange?: string; // e.g. "Low", "High"
+  activeHours?: string; // e.g. "Mon-Fri 9am-5pm"
+  jobsPerMonth?: string; // e.g. "5-10"
 };
 
 export type JobMessage = {
@@ -176,7 +178,7 @@ export type Notification = {
   id: string;
   username: string;
   type: NotificationType;
-  category: NotificationCategory; // NEW
+  category: NotificationCategory; 
   jobId: string;
   section?: NotificationSection;
   createdAt: string;
