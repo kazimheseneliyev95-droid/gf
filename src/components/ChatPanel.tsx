@@ -9,7 +9,7 @@ interface ChatPanelProps {
   otherUsername: string;
   currentUserRole: 'employer' | 'worker';
   jobTitle: string;
-  forceOpen?: boolean; // New prop
+  forceOpen?: boolean; 
 }
 
 export default function ChatPanel({ jobId, currentUsername, otherUsername, currentUserRole, jobTitle, forceOpen }: ChatPanelProps) {
@@ -19,7 +19,6 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Handle force open
   useEffect(() => {
     if (forceOpen) setIsOpen(true);
   }, [forceOpen]);
@@ -32,7 +31,6 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
       jobMsgs.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setMessages(jobMsgs);
     }
-    // Update unread count for badge
     setUnreadCount(getChatUnreadCount(currentUsername, currentUserRole, jobId));
   };
 
@@ -58,7 +56,7 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
 
       if (hasChanges) {
         localStorage.setItem(MESSAGE_STORAGE_KEY, JSON.stringify(allMsgs));
-        loadMessages(); // Reload to reflect changes
+        loadMessages(); 
       }
     }
   };
@@ -69,7 +67,6 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
     return () => clearInterval(interval);
   }, [jobId, currentUsername]);
 
-  // When opening chat, mark messages as read
   useEffect(() => {
     if (isOpen) {
       markAsRead();
@@ -88,8 +85,8 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
       senderUsername: currentUsername,
       text: newMessage.trim(),
       createdAt: new Date().toISOString(),
-      isReadByEmployer: currentUserRole === 'employer', // If I am employer, I have read it
-      isReadByWorker: currentUserRole === 'worker'      // If I am worker, I have read it
+      isReadByEmployer: currentUserRole === 'employer',
+      isReadByWorker: currentUserRole === 'worker'
     };
 
     const allMsgsStr = localStorage.getItem(MESSAGE_STORAGE_KEY);
@@ -103,7 +100,6 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
     createNotification(otherUsername, 'newMessage', jobId, { senderName: currentUsername }, 'chat');
   };
 
-  // Group messages by date
   const groupedMessages: { [date: string]: JobMessage[] } = {};
   messages.forEach(msg => {
     const date = new Date(msg.createdAt).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
@@ -131,8 +127,15 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 bg-black/20 z-50 flex items-end sm:items-center justify-center sm:justify-end sm:p-6 pointer-events-none">
-          <div className="bg-white w-full sm:w-96 h-[500px] sm:rounded-2xl shadow-2xl flex flex-col pointer-events-auto animate-in slide-in-from-bottom-4">
+        <>
+          {/* Overlay */}
+          <div 
+            className="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm"
+            onClick={() => setIsOpen(false)}
+          />
+          
+          {/* Chat Window */}
+          <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 bg-white w-full sm:w-96 h-[500px] sm:rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-4 border border-gray-200">
             
             {/* Header */}
             <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-purple-600 text-white sm:rounded-t-2xl shadow-sm">
@@ -219,7 +222,7 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
               </div>
             </form>
           </div>
-        </div>
+        </>
       )}
     </>
   );

@@ -28,84 +28,88 @@ export const logActivity = (user: string, role: UserRole, action: string, detail
   localStorage.setItem(ACTIVITY_LOG_KEY, JSON.stringify(logs));
 };
 
-// --- 3. WORKER QUALITY SCORE ---
+// --- 3. WORKER QUALITY SCORE (Legacy) ---
+// Kept for backward compatibility if needed, but Trust Score is preferred now.
 export const calculateWorkerQuality = (workerUsername: string): number => {
-  const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
-  const reviews = getLocalData<WorkerReview>(REVIEW_STORAGE_KEY);
-
-  // 1. Completion Rate
-  let accepted = 0;
-  let completed = 0;
-  let rejected = 0;
-
-  jobs.forEach(j => {
-    const app = j.applications?.find(a => a.workerUsername === workerUsername);
-    if (app) {
-      if (app.status === 'accepted') accepted++;
-      if (app.status === 'rejected') rejected++;
-    }
-    if (j.assignedWorkerUsername === workerUsername && j.status === 'completed') completed++;
-  });
-
-  const completionRate = accepted > 0 ? completed / accepted : 0;
-  
-  // 2. Rating
-  const workerReviews = reviews.filter(r => r.workerUsername === workerUsername);
-  const avgRating = workerReviews.length > 0 
-    ? workerReviews.reduce((sum, r) => sum + r.rating, 0) / workerReviews.length 
-    : 0;
-
-  // 3. Negative Signals (Rejections)
-  // If a worker applies a lot but gets rejected often, quality might be lower
-  const totalApps = accepted + rejected; // simplified
-  const rejectionRate = totalApps > 0 ? rejected / totalApps : 0;
-
-  // Formula
-  // (Completion * 0.4) + (Rating/5 * 0.4) + ((1 - Rejection) * 0.2)
-  const score = (
-    (completionRate * 0.4) + 
-    ((avgRating / 5) * 0.4) + 
-    ((1 - rejectionRate) * 0.2)
-  ) * 100;
-
-  return Math.min(100, Math.max(0, Math.round(score)));
+  return calculateTrustScore(workerUsername, 'worker').score;
 };
 
-// --- 4. EMPLOYER TRUST SCORE ---
+// --- 4. EMPLOYER TRUST SCORE (Legacy) ---
 export const calculateEmployerTrust = (employerUsername: string): number => {
+  return calculateTrustScore(employerUsername, 'employer').score;
+};
+
+// --- 5. TRUST SCORE (NEW LOGIC) ---
+export const calculateTrustScore = (username: string, role: UserRole) => {
   const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
   const reviews = getLocalData<WorkerReview>(REVIEW_STORAGE_KEY);
+  const disputes = getLocalData<Dispute>(DISPUTE_STORAGE_KEY);
 
-  const myJobs = jobs.filter(j => j.employerUsername === employerUsername);
-  const completed = myJobs.filter(j => j.status === 'completed').length;
-  
-  // 1. Completion Ratio
-  const completionRatio = myJobs.length > 0 ? completed / myJobs.length : 0;
+  let score = 50; // Base score
+  const breakdown: string[] = ['Base Score: 50'];
 
-  // 2. Response Rate
-  let offersReceived = 0;
-  let offersResponded = 0;
-  myJobs.forEach(j => {
-    const apps = j.applications || [];
-    offersReceived += apps.length;
-    offersResponded += apps.filter(a => a.status === 'accepted' || a.status === 'rejected').length;
-  });
-  const responseRate = offersReceived > 0 ? offersResponded / offersReceived : 0;
+  if (role === 'employer') {
+    // 1. Completed Jobs (+2 per job, max 20)
+    const myJobs = jobs.filter(j => j.employerUsername === username);
+    const completedCount = myJobs.filter(j => j.status === 'completed').length;
+    const completedPoints = Math.min(completedCount * 2, 20);
+    score += completedPoints;
+    if (completedPoints > 0) breakdown.push(`Completed Jobs: +${completedPoints}`);
 
-  // 3. Reviews Given (Generosity/Fairness proxy)
-  const reviewsGiven = reviews.filter(r => r.employerUsername === employerUsername);
-  const avgRatingGiven = reviewsGiven.length > 0 
-    ? reviewsGiven.reduce((sum, r) => sum + r.rating, 0) / reviewsGiven.length 
-    : 3; // Default to neutral if no reviews given
+    // 2. Ratings (Avg - 3) * 8
+    const myReviews = reviews.filter(r => r.employerUsername === username); // Reviews GIVEN by workers? Or ABOUT employer? 
+    // Usually reviews table stores "workerReview" (review OF worker). 
+    // We need reviews OF employer if they exist. 
+    // Assuming current system stores reviews OF workers. 
+    // If we don't have reviews OF employers, we use "Reviews Given" as a proxy for engagement or assume neutral.
+    // Let's use "Response Rate" or similar if no direct ratings.
+    // However, let's assume we might have added employer ratings or use a proxy.
+    // For now, let's use "Avg Rating Given" as a proxy for "Good Client" (not perfect).
+    // OR: Check if we have a field for rating employers. The types say `WorkerReview` has `workerUsername` and `employerUsername`.
+    // It implies Employer reviews Worker.
+    // Let's use "Disputes against" as primary negative.
+    
+    // Proxy: Completion Rate of posted jobs
+    const postedCount = myJobs.length;
+    const completionRate = postedCount > 0 ? completedCount / postedCount : 0;
+    const reliabilityPoints = Math.round(completionRate * 10); // Max 10
+    score += reliabilityPoints;
+    if (reliabilityPoints > 0) breakdown.push(`Reliability: +${reliabilityPoints}`);
 
-  // Formula
-  const score = (
-    (completionRatio * 0.5) + 
-    (responseRate * 0.3) + 
-    ((avgRatingGiven / 5) * 0.2)
-  ) * 100;
+    // 3. Disputes (-10 per dispute, max 30)
+    const myDisputes = disputes.filter(d => d.againstUser === username);
+    const disputePenalty = Math.min(myDisputes.length * 10, 30);
+    score -= disputePenalty;
+    if (disputePenalty > 0) breakdown.push(`Disputes: -${disputePenalty}`);
 
-  return Math.min(100, Math.max(0, Math.round(score)));
+  } else {
+    // WORKER
+    // 1. Completed Jobs (+2 per job, max 30)
+    const completedCount = jobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed').length;
+    const completedPoints = Math.min(completedCount * 2, 30);
+    score += completedPoints;
+    if (completedPoints > 0) breakdown.push(`Completed Jobs: +${completedPoints}`);
+
+    // 2. Ratings (Avg - 3) * 10
+    const myReviews = reviews.filter(r => r.workerUsername === username);
+    if (myReviews.length > 0) {
+      const avg = myReviews.reduce((sum, r) => sum + r.rating, 0) / myReviews.length;
+      const ratingPoints = Math.round((avg - 3) * 10);
+      score += ratingPoints;
+      breakdown.push(`Ratings (${avg.toFixed(1)}): ${ratingPoints > 0 ? '+' : ''}${ratingPoints}`);
+    }
+
+    // 3. Disputes (-15 per dispute, max 45)
+    const myDisputes = disputes.filter(d => d.againstUser === username);
+    const disputePenalty = Math.min(myDisputes.length * 15, 45);
+    score -= disputePenalty;
+    if (disputePenalty > 0) breakdown.push(`Disputes: -${disputePenalty}`);
+  }
+
+  // Clamp
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  return { score, breakdown };
 };
 
 // --- 6. PROFILE STRENGTH ---
@@ -119,32 +123,27 @@ export const getProfileStrengthDetails = (username: string) => {
   const checks = {
     hasSkills: false,
     hasBio: false,
-    hasRegions: false, // Updated: Check for regions
+    hasRegions: false,
     hasActivity: false
   };
 
   let score = 0;
 
-  // 1. Skills (+25%)
   if (profile && profile.skills && profile.skills.length > 0) {
     checks.hasSkills = true;
     score += 25;
   }
 
-  // 2. Bio (+25%) - Must be >= 40 chars
   if (profile && profile.bio && profile.bio.trim().length >= 40) {
     checks.hasBio = true;
     score += 25;
   }
 
-  // 3. Regions (+25%) - Replaces simple location check, or combines with it
-  // We check if regions exist in profile OR city exists in onboarding
   if ((profile && profile.regions && profile.regions.length > 0) || (onboarding && onboarding.city)) {
     checks.hasRegions = true;
     score += 25;
   }
 
-  // 4. Activity (+25%) - Completed jobs OR Rating
   const completedCount = jobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed').length;
   const hasRating = reviews.some(r => r.workerUsername === username);
   if (completedCount > 0 || hasRating) {
@@ -177,12 +176,12 @@ export const getBadges = (username: string, role: UserRole): Badge[] => {
   const badges: Badge[] = [];
   
   if (role === 'worker') {
-    const quality = calculateWorkerQuality(username);
+    const { score: quality } = calculateTrustScore(username, 'worker');
     const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
     const completed = jobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed').length;
 
     if (quality >= 80 && completed >= 5) {
-      badges.push({ id: 'top-rated', label: 'Top Rated', description: 'High quality score & many jobs', icon: 'Award' });
+      badges.push({ id: 'top-rated', label: 'Top Rated', description: 'High trust score & many jobs', icon: 'Award' });
     }
     if (quality >= 60 && quality < 80 && completed >= 2) {
       badges.push({ id: 'reliable-pro', label: 'Reliable', description: 'Consistent performance', icon: 'ShieldCheck' });
@@ -191,7 +190,7 @@ export const getBadges = (username: string, role: UserRole): Badge[] => {
       badges.push({ id: 'newcomer', label: 'Newcomer', description: 'Welcome to the platform', icon: 'Sprout' });
     }
   } else if (role === 'employer') {
-    const trust = calculateEmployerTrust(username);
+    const { score: trust } = calculateTrustScore(username, 'employer');
     const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
     const posted = jobs.filter(j => j.employerUsername === username).length;
 
@@ -207,13 +206,11 @@ export const getBadges = (username: string, role: UserRole): Badge[] => {
 };
 
 // --- 1. RECOMMENDATION ENGINE ---
-
 export const getRecommendedJobs = (workerUsername: string): JobPost[] => {
   const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
   const profiles = getLocalData<WorkerProfileData>(WORKER_PROFILE_KEY);
   const profile = profiles.find(p => p.username === workerUsername);
   
-  // Filter open jobs not applied to
   let candidates = jobs.filter(j => 
     j.status === 'open' && 
     (!j.applications || !j.applications.some(a => a.workerUsername === workerUsername))
@@ -221,18 +218,15 @@ export const getRecommendedJobs = (workerUsername: string): JobPost[] => {
 
   if (!profile) return candidates.slice(0, 5);
 
-  // Score candidates
   const scored = candidates.map(job => {
     let score = 0;
     
-    // 1. Skill Match (Category)
     const hasSkill = profile.skills.some(s => 
       job.category.toLowerCase().includes(s.toLowerCase()) || 
       s.toLowerCase().includes(job.category.toLowerCase())
     );
     if (hasSkill) score += 50;
     
-    // 2. Region Match (Address)
     if (profile.regions && profile.regions.length > 0) {
       const hasRegion = profile.regions.some(r => 
         job.address.toLowerCase().includes(r.toLowerCase())
@@ -240,10 +234,8 @@ export const getRecommendedJobs = (workerUsername: string): JobPost[] => {
       if (hasRegion) score += 30;
     }
 
-    // 3. Budget bonus (higher budget = better recommendation?)
     if (job.budget > 100) score += 10;
     
-    // 4. Recency
     const daysOld = (Date.now() - new Date(job.createdAt).getTime()) / (1000 * 60 * 60 * 24);
     if (daysOld < 3) score += 20;
 
@@ -268,9 +260,8 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
     let reasons: string[] = [];
     
     const profile = profiles.find(p => p.username === w.username);
-    const quality = calculateWorkerQuality(w.username);
+    const { score: quality } = calculateTrustScore(w.username, 'worker');
     
-    // 1. Skill Match
     if (profile) {
       const hasSkill = profile.skills.some(s => 
         job.category.toLowerCase().includes(s.toLowerCase()) || 
@@ -281,18 +272,15 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
         reasons.push("Skills match category");
       }
 
-      // 2. Region Match
       if (profile.regions && profile.regions.some(r => job.address.toLowerCase().includes(r.toLowerCase()))) {
         score += 30;
         reasons.push("In service region");
       }
     }
 
-    // 3. Quality Score
     score += (quality * 0.5);
     if (quality > 80) reasons.push("Top rated worker");
 
-    // 4. Availability (Bonus)
     const avail = getLocalData<WorkerAvailability>(AVAILABILITY_STORAGE_KEY).find(a => a.username === w.username);
     if (avail && avail.availableDays.length > 0) {
       score += 10;
@@ -305,7 +293,6 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
   return scored.sort((a, b) => b.score - a.score).slice(0, 5);
 };
 
-// --- AUCTION HELPER ---
 export const getLowestBid = (job: JobPost): number | null => {
   if (!job.applications || job.applications.length === 0) return null;
   return Math.min(...job.applications.map(a => a.offeredPrice));

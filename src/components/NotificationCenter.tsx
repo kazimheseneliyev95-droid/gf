@@ -18,7 +18,6 @@ export default function NotificationCenter({ username }: NotificationCenterProps
     if (allNotesStr) {
       const allNotes: Notification[] = JSON.parse(allNotesStr);
       const myNotes = allNotes.filter(n => n.username === username);
-      // Sort by newest
       myNotes.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       setNotifications(myNotes);
@@ -28,7 +27,6 @@ export default function NotificationCenter({ username }: NotificationCenterProps
 
   useEffect(() => {
     loadNotifications();
-    // Poll for notifications every 5 seconds (simple implementation for demo)
     const interval = setInterval(loadNotifications, 5000);
     return () => clearInterval(interval);
   }, [username]);
@@ -58,14 +56,13 @@ export default function NotificationCenter({ username }: NotificationCenterProps
     setIsOpen(false);
 
     if (n.jobId) {
-      // Navigate with query params to trigger panel logic
       const searchParams = new URLSearchParams();
       searchParams.set('jobId', n.jobId);
       if (n.section) searchParams.set('section', n.section);
       
-      // Determine base path based on user role (we assume user is already in their panel, but this handles cross-nav if needed)
-      // Since we don't know role here easily without passing it, we assume current location is fine or we use window.location
-      // Better: just push to current path with params
+      // Append timestamp to force navigation change even if on same page
+      searchParams.set('t', Date.now().toString());
+      
       navigate({
         search: searchParams.toString()
       });

@@ -1,23 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Search, Filter, MapPin, DollarSign, Briefcase, HardHat, ArrowLeft, Sparkles, Gavel, User, PlayCircle, CheckSquare } from 'lucide-react';
-import { JobPost, JOB_STORAGE_KEY, JobCategory, JOB_CATEGORIES, UserRole, WORKER_PROFILE_KEY, WorkerProfileData } from '../types';
+import { Search, Filter, MapPin, DollarSign, Briefcase, HardHat, ArrowLeft, Sparkles, Gavel, User as UserIcon, PlayCircle, CheckSquare, Star, ShieldCheck } from 'lucide-react';
+import { JobPost, JOB_STORAGE_KEY, JobCategory, JOB_CATEGORIES, UserRole, WORKER_PROFILE_KEY, WorkerProfileData, USERS_STORAGE_KEY, User, EMPLOYER_PROFILE_KEY, EmployerProfileData } from '../types';
 import { isFeatureEnabled } from '../utils/featureFlags';
+import { calculateTrustScore } from '../utils/advancedFeatures';
 import JobDetailsModal from './JobDetailsModal';
 
 export default function HomeFeed() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<{ username: string, role: UserRole } | null>(null);
-  const [jobs, setJobs] = useState<JobPost[]>([]);
-  const [filteredJobs, setFilteredJobs] = useState<JobPost[]>([]);
   
+  // Data
+  const [jobs, setJobs] = useState<JobPost[]>([]);
+  const [workers, setWorkers] = useState<User[]>([]);
+  const [employers, setEmployers] = useState<User[]>([]);
+  const [workerProfiles, setWorkerProfiles] = useState<WorkerProfileData[]>([]);
+  const [employerProfiles, setEmployerProfiles] = useState<EmployerProfileData[]>([]);
+
+  // Filtered Data
+  const [filteredJobs, setFilteredJobs] = useState<JobPost[]>([]);
+  const [filteredWorkers, setFilteredWorkers] = useState<User[]>([]);
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | 'All'>('All');
   const [minBudget, setMinBudget] = useState('');
   
   // Worker Context
-  const [workerProfile, setWorkerProfile] = useState<WorkerProfileData | null>(null);
+  const [myWorkerProfile, setMyWorkerProfile] = useState<WorkerProfileData | null>(null);
 
   // Modal
   const [viewJob, setViewJob] = useState<JobPost | null>(null);
@@ -33,45 +43,77 @@ export default function HomeFeed() {
     const user = JSON.parse(sessionStr);
     setCurrentUser(user);
 
-    // Load Jobs
+    // Load All Data
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (allJobsStr) {
       const allJobs: JobPost[] = JSON.parse(allJobsStr);
-      // Sort by newest
       const sorted = allJobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setJobs(sorted);
       setFilteredJobs(sorted);
     }
 
-    // Load Worker Profile if applicable
-    if (user.role === 'worker') {
-      const profilesStr = localStorage.getItem(WORKER_PROFILE_KEY);
-      if (profilesStr) {
-        const profiles: WorkerProfileData[] = JSON.parse(profilesStr);
-        const myProfile = profiles.find(p => p.username === user.username);
-        if (myProfile) setWorkerProfile(myProfile);
+    const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+    if (usersStr) {
+      const allUsers: User[] = JSON.parse(usersStr);
+      setWorkers(allUsers.filter(u => u.role === 'worker'));
+      setEmployers(allUsers.filter(u => u.role === 'employer'));
+    }
+
+    const wProfilesStr = localStorage.getItem(WORKER_PROFILE_KEY);
+    if (wProfilesStr) {
+      const wProfs: WorkerProfileData[] = JSON.parse(wProfilesStr);
+      setWorkerProfiles(wProfs);
+      if (user.role === 'worker') {
+        setMyWorkerProfile(wProfs.find(p => p.username === user.username) || null);
       }
     }
+
+    const eProfilesStr = localStorage.getItem(EMPLOYER_PROFILE_KEY);
+    if (eProfilesStr) {
+      setEmployerProfiles(JSON.parse(eProfilesStr));
+    }
+
   }, [navigate]);
 
   useEffect(() => {
-    let result = jobs;
+    if (!currentUser) return;
 
-    if (searchTerm) {
-      const lower = searchTerm.toLowerCase();
-      result = result.filter(j => j.title.toLowerCase().includes(lower) || j.address.toLowerCase().includes(lower));
+    if (currentUser.role === 'worker') {
+      // Filter Jobs
+      let result = jobs;
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        result = result.filter(j => j.title.toLowerCase().includes(lower) || j.address.toLowerCase().includes(lower));
+      }
+      if (selectedCategory !== 'All') {
+        result = result.filter(j => j.category === selectedCategory);
+      }
+      if (minBudget) {
+        result = result.filter(j => j.budget >= Number(minBudget));
+      }
+      setFilteredJobs(result);
+    } else {
+      // Filter Workers (Employer View)
+      let result = workers;
+      if (searchTerm) {
+        const lower = searchTerm.toLowerCase();
+        result = result.filter(u => {
+          const profile = workerProfiles.find(p => p.username === u.username);
+          return u.username.toLowerCase().includes(lower) || 
+                 (profile && profile.skills.some(s => s.toLowerCase().includes(lower))) ||
+                 (profile && profile.regions && profile.regions.some(r => r.toLowerCase().includes(lower)));
+        });
+      }
+      // Category filter for workers based on skills
+      if (selectedCategory !== 'All') {
+        result = result.filter(u => {
+          const profile = workerProfiles.find(p => p.username === u.username);
+          return profile && profile.skills.some(s => s.toLowerCase().includes(selectedCategory.toLowerCase()));
+        });
+      }
+      setFilteredWorkers(result);
     }
-
-    if (selectedCategory !== 'All') {
-      result = result.filter(j => j.category === selectedCategory);
-    }
-
-    if (minBudget) {
-      result = result.filter(j => j.budget >= Number(minBudget));
-    }
-
-    setFilteredJobs(result);
-  }, [jobs, searchTerm, selectedCategory, minBudget]);
+  }, [jobs, workers, searchTerm, selectedCategory, minBudget, currentUser, workerProfiles]);
 
   if (!currentUser) return null;
 
@@ -88,7 +130,7 @@ export default function HomeFeed() {
             </Link>
             <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               {isWorker ? <HardHat className="text-amber-600" /> : <Briefcase className="text-blue-600" />}
-              Global Job Feed
+              Global Home Feed
             </h1>
           </div>
           <div className="flex items-center gap-3">
@@ -99,136 +141,229 @@ export default function HomeFeed() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 space-y-6">
+      <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
-          <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
-            <Filter size={16} /> Filters:
+        {/* MAIN CONTENT AREA */}
+        <div className="lg:col-span-3 space-y-6">
+          
+          {/* Filters */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
+              <Filter size={16} /> Filters:
+            </div>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+              <input 
+                type="text" 
+                placeholder={isWorker ? "Search jobs..." : "Search workers..."}
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <select 
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value as any)}
+              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="All">All Categories</option>
+              {JOB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {isWorker && (
+              <input 
+                type="number" 
+                placeholder="Min Budget" 
+                value={minBudget}
+                onChange={e => setMinBudget(e.target.value)}
+                className="w-32 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            )}
           </div>
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-            <input 
-              type="text" 
-              placeholder="Search jobs..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-          <select 
-            value={selectedCategory}
-            onChange={e => setSelectedCategory(e.target.value as any)}
-            className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          >
-            <option value="All">All Categories</option>
-            {JOB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <input 
-            type="number" 
-            placeholder="Min Budget" 
-            value={minBudget}
-            onChange={e => setMinBudget(e.target.value)}
-            className="w-32 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-        </div>
 
-        {/* Job List */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredJobs.map(job => {
-            // Worker Match Logic
-            let isMatch = false;
-            if (isWorker && workerProfile) {
-              const skillMatch = workerProfile.skills.some(s => job.category.toLowerCase().includes(s.toLowerCase()));
-              const regionMatch = workerProfile.regions?.some(r => job.address.toLowerCase().includes(r.toLowerCase()));
-              isMatch = skillMatch || (regionMatch ?? false);
-            }
+          {/* LIST CONTENT */}
+          {isWorker ? (
+            // WORKER VIEW: JOBS
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredJobs.map(job => {
+                let isMatch = false;
+                if (myWorkerProfile) {
+                  const skillMatch = myWorkerProfile.skills.some(s => job.category.toLowerCase().includes(s.toLowerCase()));
+                  const regionMatch = myWorkerProfile.regions?.some(r => job.address.toLowerCase().includes(r.toLowerCase()));
+                  isMatch = skillMatch || (regionMatch ?? false);
+                }
 
-            const myApp = isWorker ? job.applications?.find(a => a.workerUsername === currentUser.username) : null;
-            const isMyJob = !isWorker && job.employerUsername === currentUser.username;
+                const myApp = job.applications?.find(a => a.workerUsername === currentUser.username);
 
-            return (
-              <div 
-                key={job.id} 
-                onClick={() => setViewJob(job)}
-                className={`bg-white rounded-xl border shadow-sm p-5 hover:shadow-md transition-all cursor-pointer relative group ${
-                  isMyJob ? 'border-blue-200 ring-1 ring-blue-50' : 'border-gray-200'
-                }`}
-              >
-                {/* Badges */}
-                <div className="absolute top-3 right-3 flex flex-col gap-1 items-end">
-                   {isWorker && isMatch && (
-                     <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
-                       <Sparkles size={10} /> Match
-                     </span>
-                   )}
-                   {isMyJob && (
-                     <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded">
-                       Your Job
-                     </span>
-                   )}
-                   {myApp && (
-                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                       myApp.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                       myApp.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                       'bg-amber-100 text-amber-700'
-                     }`}>
-                       {myApp.status === 'pending' ? 'Offer Sent' : myApp.status}
-                     </span>
-                   )}
-                </div>
+                return (
+                  <div 
+                    key={job.id} 
+                    onClick={() => setViewJob(job)}
+                    className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all cursor-pointer relative group"
+                  >
+                    <div className="absolute top-3 right-3 flex flex-col gap-1 items-end">
+                       {isMatch && (
+                         <span className="bg-green-100 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                           <Sparkles size={10} /> Match
+                         </span>
+                       )}
+                       {myApp && (
+                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                           myApp.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                           myApp.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                           'bg-amber-100 text-amber-700'
+                         }`}>
+                           {myApp.status === 'pending' ? 'Offer Sent' : myApp.status}
+                         </span>
+                       )}
+                    </div>
 
-                <div className="mb-3 pr-16">
-                  <h3 className="font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{job.title}</h3>
-                  <div className="flex gap-2 mt-1">
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                      job.status === 'open' ? 'bg-green-50 text-green-700' :
-                      job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {job.status}
-                    </span>
+                    <div className="mb-3 pr-16">
+                      <h3 className="font-bold text-gray-900 line-clamp-1 group-hover:text-blue-600 transition-colors">{job.title}</h3>
+                      <div className="flex gap-2 mt-1">
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                          job.status === 'open' ? 'bg-green-50 text-green-700' :
+                          job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
+                          'bg-gray-100 text-gray-500'
+                        }`}>
+                          {job.status}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-sm text-gray-600 mb-3">
+                      <div className="flex items-center gap-2">
+                        <DollarSign size={14} className="text-gray-400" />
+                        {job.isAuction && showAuction ? (
+                          <span className="font-bold text-purple-600 text-xs flex items-center gap-1">
+                            <Gavel size={10} /> Open Bidding
+                          </span>
+                        ) : (
+                          <span className="font-bold text-gray-900">{job.budget} ₼</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <MapPin size={14} className="text-gray-400" />
+                        <span className="truncate">{job.address}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <UserIcon size={14} className="text-gray-400" />
+                        <span className="truncate">{job.employerUsername}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                );
+              })}
+              {filteredJobs.length === 0 && <p className="text-gray-500 text-center col-span-2 py-10">No jobs found.</p>}
+            </div>
+          ) : (
+            // EMPLOYER VIEW: WORKERS
+            <div className="grid gap-4 md:grid-cols-2">
+              {filteredWorkers.map(worker => {
+                const profile = workerProfiles.find(p => p.username === worker.username);
+                const { score: trustScore } = calculateTrustScore(worker.username, 'worker');
+                const isAvailable = profile?.availabilityStatus === 'available';
 
-                <div className="space-y-2 text-sm text-gray-600 mb-3">
-                  <div className="flex items-center gap-2">
-                    <DollarSign size={14} className="text-gray-400" />
-                    {job.isAuction && showAuction ? (
-                      <span className="font-bold text-purple-600 text-xs flex items-center gap-1">
-                        <Gavel size={10} /> Open Bidding
-                      </span>
-                    ) : (
-                      <span className="font-bold text-gray-900">{job.budget} ₼</span>
+                return (
+                  <div key={worker.username} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+                          <UserIcon size={24} />
+                        </div>
+                        <div>
+                          <Link to={`/worker/${worker.username}`} className="font-bold text-gray-900 hover:text-blue-600 hover:underline">
+                            {worker.username}
+                          </Link>
+                          <div className="flex items-center gap-2 mt-1">
+                            {isAvailable ? (
+                              <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold">Available</span>
+                            ) : (
+                              <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-bold">Busy</span>
+                            )}
+                            <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5">
+                              <ShieldCheck size={10} /> {trustScore}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <Link to={`/worker/${worker.username}`} className="text-xs border border-gray-200 px-2 py-1 rounded hover:bg-gray-50">
+                        Profile
+                      </Link>
+                    </div>
+                    
+                    <div className="mt-3">
+                      {profile?.skills && profile.skills.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {profile.skills.slice(0, 3).map(s => (
+                            <span key={s} className="text-xs bg-gray-50 text-gray-600 px-2 py-0.5 rounded">{s}</span>
+                          ))}
+                          {profile.skills.length > 3 && <span className="text-xs text-gray-400">+{profile.skills.length - 3}</span>}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">No skills listed</p>
+                      )}
+                    </div>
+                    
+                    {profile?.bio && (
+                      <p className="text-xs text-gray-500 mt-3 line-clamp-2">"{profile.bio}"</p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin size={14} className="text-gray-400" />
-                    <span className="truncate">{job.address}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <User size={14} className="text-gray-400" />
-                    <span className="truncate">{job.employerUsername}</span>
-                  </div>
-                </div>
-
-                <p className="text-xs text-gray-400 mt-auto pt-3 border-t border-gray-50 flex justify-between items-center">
-                  <span>{new Date(job.createdAt).toLocaleDateString()}</span>
-                  <span className="group-hover:translate-x-1 transition-transform text-blue-600 font-medium">View Details →</span>
-                </p>
-              </div>
-            );
-          })}
+                );
+              })}
+              {filteredWorkers.length === 0 && <p className="text-gray-500 text-center col-span-2 py-10">No workers found.</p>}
+            </div>
+          )}
         </div>
 
-        {filteredJobs.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <p>No jobs found matching your criteria.</p>
-          </div>
-        )}
+        {/* SIDEBAR */}
+        <div className="lg:col-span-1 space-y-6">
+          {isWorker ? (
+            // WORKER SIDEBAR: TOP EMPLOYERS
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Briefcase size={18} className="text-blue-600" /> Top Employers
+              </h3>
+              <div className="space-y-3">
+                {employers.slice(0, 5).map(emp => {
+                  const { score } = calculateTrustScore(emp.username, 'employer');
+                  const postedCount = jobs.filter(j => j.employerUsername === emp.username).length;
+                  return (
+                    <div key={emp.username} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <div className="flex justify-between items-start">
+                        <span className="font-bold text-sm text-gray-900">{emp.username}</span>
+                        <span className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded">{score}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{postedCount} jobs posted</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            // EMPLOYER SIDEBAR: YOUR JOBS
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                <Briefcase size={18} className="text-blue-600" /> Your Recent Jobs
+              </h3>
+              <div className="space-y-3">
+                {jobs.filter(j => j.employerUsername === currentUser.username).slice(0, 3).map(job => (
+                  <div key={job.id} className="p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+                    <h4 className="font-bold text-sm text-gray-900 truncate">{job.title}</h4>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="text-xs text-gray-500">{job.status}</span>
+                      <span className="text-xs font-bold text-blue-600">{job.applications?.length || 0} offers</span>
+                    </div>
+                  </div>
+                ))}
+                <Link to="/employer" className="block text-center text-xs text-blue-600 hover:underline mt-2">
+                  Manage all jobs
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
 
-        {/* Job Details Modal */}
         {viewJob && (
           <JobDetailsModal 
             isOpen={!!viewJob}

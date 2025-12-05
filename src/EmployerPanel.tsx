@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon, Edit2, Layout, MessageSquare, Home } from 'lucide-react';
-import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY, MediaItem } from './types';
+import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, Map, List, Gavel, Edit2, Layout, DollarSign } from 'lucide-react';
+import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
 import { createNotification, getWorkerAverageRating } from './utils';
 
-// Advanced Features
 import { getBadges, getRecommendedWorkers, calculateEmployerTrust, logActivity, getLowestBid, calculateWorkerQuality } from './utils/advancedFeatures';
 import { isWorkerAvailable, getDistance } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
@@ -19,59 +18,30 @@ import PremiumBadge from './components/PremiumBadge';
 import BehaviorScore from './components/BehaviorScore';
 import EditJobModal from './components/EditJobModal';
 import EmployerProfileModal from './components/EmployerProfileModal';
+import CreateJobModal from './components/CreateJobModal';
+import TrustScoreDisplay from './components/TrustScoreDisplay';
 
 export default function EmployerPanel() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [currentUser, setCurrentUser] = useState<{ username: string, hasCompletedOnboarding?: boolean } | null>(null);
   
-  // Form State
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [budget, setBudget] = useState('');
-  const [address, setAddress] = useState('');
-  const [days, setDays] = useState('');
-  const [category, setCategory] = useState<JobCategory>('Other');
-  const [tags, setTags] = useState('');
-  const [isAuction, setIsAuction] = useState(false);
-  
-  // Feature 5: Desired Completion
-  const [deadlineType, setDeadlineType] = useState<'none' | 'date' | 'relative'>('none');
-  const [deadlineValue, setDeadlineValue] = useState('');
-
-  // Feature 8: Materials
-  const [materials, setMaterials] = useState<'by_employer' | 'by_worker' | 'none'>('none');
-
-  // Feature 9: Before Media
-  const [mediaUrl, setMediaUrl] = useState('');
-  const [beforeMedia, setBeforeMedia] = useState<MediaItem[]>([]);
-
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
   // Data State
   const [myJobs, setMyJobs] = useState<JobPost[]>([]);
   const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number, quality: number })[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [activeChatJobId, setActiveChatJobId] = useState<string | null>(null);
-  const [activeChatWorker, setActiveChatWorker] = useState<string | null>(null); // For per-worker chat
+  const [activeChatWorker, setActiveChatWorker] = useState<string | null>(null);
 
-  // Advanced: Suggestions
   const [suggestedWorkers, setSuggestedWorkers] = useState<{ username: string, score: number, matchReason: string }[]>([]);
-
-  // Filters
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'processing' | 'completed'>('all');
   
-  // Offer Filters (per job)
   const [offerPriceMax, setOfferPriceMax] = useState<string>('');
   const [offerRatingMin, setOfferRatingMin] = useState<string>('');
 
-  // Stats & Badges
   const [stats, setStats] = useState({ posted: 0, completed: 0, avgSpend: 0, open: 0 });
   const [badges, setBadges] = useState<any[]>([]);
-  const [trustScore, setTrustScore] = useState(0);
 
-  // Feature Flags
   const showComparison = isFeatureEnabled('workerComparisonView');
   const showAvail = isFeatureEnabled('smartAvailabilityMatching');
   const showLoc = isFeatureEnabled('locationDistanceMatching');
@@ -90,15 +60,15 @@ export default function EmployerPanel() {
     isOpen: false, job: null
   });
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [createJobModalOpen, setCreateJobModalOpen] = useState(false);
 
-  // Rating Modal State
   const [ratingModal, setRatingModal] = useState<{ isOpen: boolean, jobId: string | null, workerUsername: string | null }>({
     isOpen: false, jobId: null, workerUsername: null
   });
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
+  const [success, setSuccess] = useState('');
 
-  // Feature 6: Checklist Review
   const [checklistReviewJob, setChecklistReviewJob] = useState<JobPost | null>(null);
 
   useEffect(() => {
@@ -117,30 +87,24 @@ export default function EmployerPanel() {
       loadMyJobs(user.username);
       loadFavorites(user.username);
       setBadges(getBadges(user.username, 'employer'));
-      setTrustScore(calculateEmployerTrust(user.username));
     } catch (e) {
       navigate('/');
     }
   }, [navigate]);
 
-  // Feature: Notification Navigation Handler
   useEffect(() => {
     const jobId = searchParams.get('jobId');
     const section = searchParams.get('section');
 
     if (jobId) {
-      // Expand the job
       setExpandedJobId(jobId);
       setSuggestedWorkers(getRecommendedWorkers(jobId));
       
-      // Scroll to job
-      // We use a timeout to allow render
       setTimeout(() => {
         const element = document.getElementById(`job-${jobId}`);
         if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
 
-      // Handle section
       if (section === 'chat') {
         setActiveChatJobId(jobId);
       } else {
@@ -168,7 +132,6 @@ export default function EmployerPanel() {
       const filtered = allJobs.filter(j => j.employerUsername === username);
       setMyJobs(filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 
-      // Stats
       const completedJobs = filtered.filter(j => j.status === 'completed');
       const openJobs = filtered.filter(j => j.status === 'open');
       let totalSpend = 0;
@@ -192,7 +155,6 @@ export default function EmployerPanel() {
       const allFavs: FavoriteWorker[] = JSON.parse(allFavsStr);
       const myFavs = allFavs.filter(f => f.employerUsername === username);
       
-      // Enrich with ratings
       const enrichedFavs = myFavs.map(f => ({
         ...f,
         rating: getWorkerAverageRating(f.workerUsername),
@@ -201,62 +163,6 @@ export default function EmployerPanel() {
       
       setFavorites(enrichedFavs);
     }
-  };
-
-  const handleAddMedia = () => {
-    if (mediaUrl.trim()) {
-      setBeforeMedia([...beforeMedia, { url: mediaUrl, type: 'image' }]);
-      setMediaUrl('');
-    }
-  };
-
-  const handleCreateJob = (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    if (!currentUser) return;
-
-    // Validation: Budget is required ONLY if NOT auction
-    if (!title || !description || (!isAuction && !budget) || !address || !days) {
-      setError('Please fill in all fields.');
-      return;
-    }
-
-    const newJob: JobPost = {
-      id: crypto.randomUUID(),
-      employerUsername: currentUser.username,
-      title,
-      description,
-      budget: isAuction ? 0 : Number(budget), // Set budget to 0 if auction
-      address,
-      daysToComplete: Number(days),
-      createdAt: new Date().toISOString(),
-      applications: [],
-      status: 'open',
-      category,
-      tags: tags.split(',').map(t => t.trim()).filter(t => t),
-      isAuction: isAuction && showAuction,
-      auctionMode: (isAuction && showAuction) ? 'open' : 'none',
-      // New fields
-      desiredCompletion: deadlineType !== 'none' ? { type: deadlineType, value: deadlineValue } : undefined,
-      materials,
-      media: { before: beforeMedia, after: [] }
-    };
-
-    const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
-    const allJobs: JobPost[] = allJobsStr ? JSON.parse(allJobsStr) : [];
-    allJobs.push(newJob);
-    localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
-    
-    logActivity(currentUser.username, 'employer', 'JOB_CREATED', { jobId: newJob.id, auction: newJob.isAuction });
-
-    setMyJobs([newJob, ...myJobs]);
-    // Reset form
-    setTitle(''); setDescription(''); setBudget(''); setAddress(''); setDays(''); setTags(''); setIsAuction(false);
-    setDeadlineType('none'); setDeadlineValue(''); setMaterials('none'); setBeforeMedia([]);
-    setSuccess('Job posted successfully.');
-    setTimeout(() => setSuccess(''), 3000);
   };
 
   const handleDeleteJob = (id: string) => {
@@ -329,14 +235,12 @@ export default function EmployerPanel() {
   };
 
   const handleCompleteJob = (jobId: string, workerUsername: string) => {
-    // Feature 6: If checklist exists, review it first
     const job = myJobs.find(j => j.id === jobId);
     if (job?.completionChecklist?.worker?.workCompleted) {
       setChecklistReviewJob(job);
       return;
     }
 
-    // Fallback legacy completion
     if (!confirm("Mark this job as completed? You will be asked to rate the worker.")) return;
     finalizeCompletion(jobId, workerUsername);
   };
@@ -353,7 +257,6 @@ export default function EmployerPanel() {
     allJobs[jobIndex].status = 'completed';
     allJobs[jobIndex].completedAt = new Date().toISOString();
 
-    // Update checklist confirmation if exists
     if (allJobs[jobIndex].completionChecklist) {
       allJobs[jobIndex].completionChecklist!.employer = { confirmed: true };
     }
@@ -415,7 +318,6 @@ export default function EmployerPanel() {
       setExpandedJobId(null);
     } else {
       setExpandedJobId(jobId);
-      // Load suggestions when opening
       setSuggestedWorkers(getRecommendedWorkers(jobId));
     }
     setOfferPriceMax('');
@@ -462,11 +364,17 @@ export default function EmployerPanel() {
                 <GamificationBadges badges={badges} />
                 <PremiumBadge username={currentUser.username} role="employer" />
                 {showBehavior && <BehaviorScore username={currentUser.username} role="employer" />}
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Trust Score: {trustScore}</span>
+                <TrustScoreDisplay username={currentUser.username} role="employer" />
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setCreateJobModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors shadow-sm"
+            >
+              <Plus size={18} /> Post New Job
+            </button>
             <NotificationCenter username={currentUser.username} />
             <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
               <LogOut size={16} /> Logout
@@ -509,7 +417,7 @@ export default function EmployerPanel() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* LEFT COLUMN: Create Job & Favorites */}
+          {/* LEFT COLUMN: Favorites */}
           <div className="lg:col-span-1 space-y-6">
             
             {/* Favorites List */}
@@ -549,171 +457,6 @@ export default function EmployerPanel() {
                 </div>
               )}
             </div>
-
-            {/* Create Job Form */}
-            <div className="bg-white rounded-xl shadow-sm p-6 border-t-4 border-t-blue-500">
-              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <Plus className="text-blue-500" size={20} /> Post New Job
-              </h2>
-              <form onSubmit={handleCreateJob} className="space-y-4">
-                {/* ... Form Inputs ... */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Job Title</label>
-                  <input type="text" placeholder="e.g. House Painting" value={title} onChange={e => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Description</label>
-                  <textarea placeholder="Describe the work needed..." value={description} onChange={e => setDescription(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-20 resize-none" />
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Category</label>
-                  <select value={category} onChange={e => setCategory(e.target.value as JobCategory)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                    {JOB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-
-                {/* Price Type Selection (Auction Mode) */}
-                {showAuction && (
-                  <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                    <label className="block text-xs font-semibold text-purple-900 mb-2">Price Type</label>
-                    <div className="flex gap-3">
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input 
-                          type="radio" 
-                          name="priceType" 
-                          checked={!isAuction} 
-                          onChange={() => setIsAuction(false)}
-                          className="text-blue-600 focus:ring-blue-500" 
-                        />
-                        Fixed Price
-                      </label>
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input 
-                          type="radio" 
-                          name="priceType" 
-                          checked={isAuction} 
-                          onChange={() => { setIsAuction(true); setBudget(''); }}
-                          className="text-blue-600 focus:ring-blue-500" 
-                        />
-                        <span className="flex items-center gap-1 text-purple-700 font-bold">
-                          <Gavel size={12} /> Open Bidding
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={`block text-xs font-semibold mb-1 ${isAuction ? 'text-gray-400' : 'text-gray-700'}`}>Budget (₼)</label>
-                    <div className="relative">
-                      <DollarSign className={`absolute left-2.5 top-2.5 ${isAuction ? 'text-gray-300' : 'text-gray-400'}`} size={14} />
-                      <input 
-                        type="number" 
-                        placeholder={isAuction ? "Determined by bids" : "150"} 
-                        value={isAuction ? '' : budget} 
-                        onChange={e => setBudget(e.target.value)} 
-                        disabled={isAuction}
-                        className={`w-full pl-8 pr-2 py-2 border rounded-lg text-sm outline-none ${
-                          isAuction 
-                            ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' 
-                            : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
-                        }`} 
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Days</label>
-                    <div className="relative">
-                      <Clock className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                      <input type="number" placeholder="3" value={days} onChange={e => setDays(e.target.value)} className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Address</label>
-                  <div className="relative">
-                    <MapPin className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                    <input type="text" placeholder="City / Area" value={address} onChange={e => setAddress(e.target.value)} className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  </div>
-                </div>
-
-                {/* Feature 5: Desired Completion */}
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Desired Completion</label>
-                  <div className="flex gap-2 mb-2">
-                    <select 
-                      value={deadlineType} 
-                      onChange={e => setDeadlineType(e.target.value as any)}
-                      className="flex-1 px-2 py-1 text-xs border rounded"
-                    >
-                      <option value="none">None</option>
-                      <option value="date">Specific Date</option>
-                      <option value="relative">Relative (e.g. 2 days)</option>
-                    </select>
-                  </div>
-                  {deadlineType !== 'none' && (
-                    <input 
-                      type={deadlineType === 'date' ? 'date' : 'text'}
-                      value={deadlineValue}
-                      onChange={e => setDeadlineValue(e.target.value)}
-                      placeholder={deadlineType === 'relative' ? 'e.g. Within 48 hours' : ''}
-                      className="w-full px-2 py-1 text-xs border rounded"
-                    />
-                  )}
-                </div>
-
-                {/* Feature 8: Materials */}
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Materials</label>
-                  <select 
-                    value={materials} 
-                    onChange={e => setMaterials(e.target.value as any)}
-                    className="w-full px-2 py-1 text-xs border rounded"
-                  >
-                    <option value="none">Not Applicable / None</option>
-                    <option value="by_employer">Provided by Employer</option>
-                    <option value="by_worker">Provided by Worker</option>
-                  </select>
-                </div>
-
-                {/* Feature 9: Before Media */}
-                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                  <label className="block text-xs font-semibold text-gray-700 mb-2">Photos (Before)</label>
-                  <div className="flex gap-2 mb-2">
-                    <input 
-                      type="text" 
-                      placeholder="Image URL..." 
-                      value={mediaUrl}
-                      onChange={e => setMediaUrl(e.target.value)}
-                      className="flex-1 px-2 py-1 text-xs border rounded"
-                    />
-                    <button type="button" onClick={handleAddMedia} className="bg-blue-100 text-blue-600 p-1 rounded"><Plus size={14} /></button>
-                  </div>
-                  {beforeMedia.length > 0 && (
-                    <div className="flex gap-1 overflow-x-auto">
-                      {beforeMedia.map((m, i) => (
-                        <div key={i} className="w-8 h-8 rounded bg-gray-200 overflow-hidden">
-                          <img src={m.url} alt="preview" className="w-full h-full object-cover" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Tags (comma separated)</label>
-                  <input type="text" placeholder="urgent, night shift" value={tags} onChange={e => setTags(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-
-                {error && <p className="text-xs text-red-600">{error}</p>}
-                {success && <p className="text-xs text-green-600">{success}</p>}
-                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors shadow-sm">Post Job</button>
-              </form>
-            </div>
           </div>
 
           {/* RIGHT COLUMN: My Jobs List */}
@@ -741,6 +484,8 @@ export default function EmployerPanel() {
                 ))}
               </div>
             </div>
+
+            {success && <p className="text-xs text-green-600 bg-green-50 p-2 rounded border border-green-100">{success}</p>}
 
             {filteredJobs.length === 0 ? (
               <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-200 text-gray-500">
@@ -811,7 +556,6 @@ export default function EmployerPanel() {
                       {/* Job Actions */}
                       <div className="mt-4 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          {/* View Offers Button */}
                           <button 
                             onClick={() => toggleApplications(job.id)}
                             className={`flex items-center gap-2 text-sm font-medium transition-colors ${
@@ -824,7 +568,6 @@ export default function EmployerPanel() {
                               : 'Manage & Suggestions'}
                           </button>
                           
-                          {/* Chat Button (Job Level) */}
                           {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
                             <ChatPanel 
                               jobId={job.id} 
@@ -836,7 +579,6 @@ export default function EmployerPanel() {
                             />
                           )}
 
-                          {/* Feature 1: Problem Report Button */}
                           {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
                             <button 
                               onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.assignedWorkerUsername! })}
@@ -848,7 +590,6 @@ export default function EmployerPanel() {
                           )}
                         </div>
 
-                        {/* Complete Job Button */}
                         {job.status === 'processing' && job.assignedWorkerUsername && (
                           <button
                             onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)}
@@ -859,7 +600,6 @@ export default function EmployerPanel() {
                           </button>
                         )}
                         
-                        {/* Review Status */}
                         {job.status === 'completed' && job.reviewed && (
                           <span className="text-xs text-amber-600 font-medium flex items-center gap-1">
                             <Star size={12} fill="currentColor" /> Review Submitted
@@ -872,7 +612,6 @@ export default function EmployerPanel() {
                     {expandedJobId === job.id && (
                       <div className="bg-gray-50 border-t border-gray-100 p-4 animate-in slide-in-from-top-2">
                         
-                        {/* 1. Suggestions (If open) */}
                         {job.status === 'open' && (
                           <div className="mb-6">
                             <h4 className="text-xs font-bold text-purple-700 uppercase tracking-wider mb-3 flex items-center gap-2">
@@ -898,7 +637,6 @@ export default function EmployerPanel() {
                           </div>
                         )}
 
-                        {/* 2. Offers */}
                         <div className="flex justify-between items-center mb-3">
                           <div className="flex items-center gap-3">
                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Worker Offers</h4>
@@ -1007,7 +745,6 @@ export default function EmployerPanel() {
                                           )}
                                         </div>
                                         {app.message && <p className="text-xs text-gray-600 mt-1 italic">"{app.message}"</p>}
-                                        {/* Feature 5: Display Deadline Answer */}
                                         {app.canMeetDeadline !== undefined && (
                                           <p className={`text-xs mt-1 font-medium ${app.canMeetDeadline ? 'text-green-600' : 'text-red-500'}`}>
                                             {app.canMeetDeadline ? '✓ Can meet deadline' : '⚠ Cannot meet deadline'}
@@ -1023,7 +760,6 @@ export default function EmployerPanel() {
                                         <span className="text-[10px] text-gray-400 uppercase font-medium">Offer</span>
                                       </div>
 
-                                      {/* Per-Worker Chat Trigger */}
                                       <div className="relative">
                                         <button 
                                           onClick={() => {
@@ -1035,7 +771,6 @@ export default function EmployerPanel() {
                                         >
                                           <MessageSquare size={18} />
                                         </button>
-                                        {/* Render Chat Panel if active */}
                                         {activeChatJobId === job.id && activeChatWorker === app.workerUsername && (
                                           <div className="absolute right-0 top-full mt-2 z-50">
                                             <ChatPanel 
@@ -1050,7 +785,6 @@ export default function EmployerPanel() {
                                         )}
                                       </div>
 
-                                      {/* Action Buttons */}
                                       {job.status === 'open' && app.status === 'pending' && (
                                         <div className="flex gap-2">
                                           <button
@@ -1100,13 +834,12 @@ export default function EmployerPanel() {
               <div className="bg-gray-50 p-4 rounded-lg space-y-2 mb-4 border border-gray-100">
                 {Object.entries(checklistReviewJob.completionChecklist?.worker || {}).map(([key, val]) => (
                   <div key={key} className="flex items-center gap-2">
-                    {val ? <CheckCircle size={16} className="text-green-600" /> : <XCircle size={16} className="text-red-400" />}
+                    {val ? <CheckCircle size={16} className="text-green-600" /> : <X size={16} className="text-red-400" />}
                     <span className="text-sm capitalize text-gray-700">{key.replace(/([A-Z])/g, ' $1')}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Show After Media */}
               {checklistReviewJob.media?.after && checklistReviewJob.media.after.length > 0 && (
                 <div className="mb-4">
                   <p className="text-xs font-bold text-gray-700 mb-2">After Photos</p>
@@ -1184,7 +917,6 @@ export default function EmployerPanel() {
           </div>
         )}
 
-        {/* Dispute Modal */}
         <DisputeModal 
           isOpen={disputeModal.isOpen} 
           onClose={() => setDisputeModal({ ...disputeModal, isOpen: false })}
@@ -1194,7 +926,6 @@ export default function EmployerPanel() {
           role="employer"
         />
 
-        {/* Comparison Modal */}
         {comparisonModal.isOpen && comparisonModal.job && (
           <WorkerComparisonModal 
             isOpen={comparisonModal.isOpen}
@@ -1204,7 +935,6 @@ export default function EmployerPanel() {
           />
         )}
 
-        {/* Edit Job Modal */}
         {editJobModal.isOpen && editJobModal.job && (
           <EditJobModal 
             isOpen={editJobModal.isOpen}
@@ -1215,11 +945,17 @@ export default function EmployerPanel() {
           />
         )}
 
-        {/* Employer Profile Modal */}
         <EmployerProfileModal 
           isOpen={profileModalOpen}
           onClose={() => setProfileModalOpen(false)}
           username={currentUser.username}
+          currentUser={currentUser.username}
+        />
+
+        <CreateJobModal 
+          isOpen={createJobModalOpen} 
+          onClose={() => setCreateJobModalOpen(false)} 
+          onSuccess={() => loadMyJobs(currentUser.username)}
           currentUser={currentUser.username}
         />
 
