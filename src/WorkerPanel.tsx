@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { 
   LogOut, HardHat, MapPin, Clock, DollarSign, Send, User, 
   CheckCircle, XCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, Trash2, 
-  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell, Plus
+  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell, Plus, Zap
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
@@ -16,7 +16,7 @@ import ChatPanel from './components/ChatPanel';
 import { createNotification } from './utils';
 
 // Advanced Features
-import { getBadges, getRecommendedJobs, logActivity, getLowestBid } from './utils/advancedFeatures';
+import { getBadges, getRecommendedJobs, logActivity, getLowestBid, calculateProfileStrength } from './utils/advancedFeatures';
 import { getDistance } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
 
@@ -26,6 +26,7 @@ import AvailabilityScheduler from './components/AvailabilityScheduler';
 import DisputeModal from './components/DisputeModal';
 import PremiumBadge from './components/PremiumBadge';
 import CompletionModal from './components/CompletionModal';
+import EmployerProfileModal from './components/EmployerProfileModal';
 
 type Tab = 'available' | 'recommended' | 'saved' | 'offers' | 'progress' | 'completed';
 
@@ -51,14 +52,16 @@ export default function WorkerPanel() {
 
   // Profile Edit
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileData, setProfileData] = useState<WorkerProfileData>({ username: '', skills: [], bio: '', availabilityStatus: 'available' });
+  const [profileData, setProfileData] = useState<WorkerProfileData>({ username: '', skills: [], regions: [], bio: '', availabilityStatus: 'available' });
   const [skillInput, setSkillInput] = useState('');
+  const [regionInput, setRegionInput] = useState(''); // New Region Input
   const [validationErrors, setValidationErrors] = useState<{ bio?: string, skills?: string }>({});
 
   // Stats & Badges
-  const [stats, setStats] = useState({ completed: 0, earned: 0, rating: 0 });
+  const [stats, setStats] = useState({ completed: 0, earned: 0, rating: 0, completedThisMonth: 0 });
   const [badges, setBadges] = useState<any[]>([]);
   const [recommendedJobs, setRecommendedJobs] = useState<JobPost[]>([]);
+  const [profileStrengthScore, setProfileStrengthScore] = useState(0);
 
   // Feature 3: Saved Jobs
   const [savedJobs, setSavedJobs] = useState<string[]>([]);
@@ -75,6 +78,10 @@ export default function WorkerPanel() {
   const [completionModal, setCompletionModal] = useState<{isOpen: boolean, job: JobPost | null}>({
     isOpen: false, job: null
   });
+  const [employerProfileModal, setEmployerProfileModal] = useState<{isOpen: boolean, username: string | null}>({
+    isOpen: false, username: null
+  });
+
 
   useEffect(() => {
     const sessionStr = localStorage.getItem('currentUser');
@@ -126,25 +133,6 @@ export default function WorkerPanel() {
     }
   }, [searchParams, availableJobs.length]);
 
-  // Feature 2: Auto Reminder Check
-  useEffect(() => {
-    if (!currentUser || !profileData.skills.length) return;
-    
-    // Simple check: If there are open jobs matching skills that I haven't applied to
-    const hasMatchingOpenJobs = availableJobs.some(j => 
-      j.status === 'open' && 
-      profileData.skills.some(s => j.category.includes(s)) &&
-      !j.applications.some(a => a.workerUsername === currentUser.username)
-    );
-
-    if (hasMatchingOpenJobs && profileData.availabilityStatus !== 'busy') {
-      // In a real app, check if we already notified recently. 
-      // Here we just log or show a transient UI element if needed, or rely on NotificationCenter polling.
-      // For this demo, we'll create a notification if one doesn't exist for "general reminder" today.
-      // Skipped to avoid spamming notifications on every refresh in demo.
-    }
-  }, [availableJobs, currentUser, profileData]);
-
   const loadData = (username: string) => {
     // Load Jobs
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
@@ -164,12 +152,22 @@ export default function WorkerPanel() {
       
       // Calculate Stats
       let completed = 0;
+      let completedThisMonth = 0;
       let earned = 0;
+      const now = new Date();
+      
       allJobs.forEach(job => {
         if (job.status === 'completed' && job.assignedWorkerUsername === username) {
           completed++;
           const myApp = job.applications.find(a => a.workerUsername === username && a.status === 'accepted');
           if (myApp) earned += myApp.offeredPrice;
+          
+          if (job.completedAt) {
+            const completedDate = new Date(job.completedAt);
+            if (completedDate.getMonth() === now.getMonth() && completedDate.getFullYear() === now.getFullYear()) {
+              completedThisMonth++;
+            }
+          }
         }
       });
 
@@ -186,7 +184,7 @@ export default function WorkerPanel() {
         }
       }
 
-      setStats({ completed, earned, rating });
+      setStats({ completed, earned, rating, completedThisMonth });
       
       // Advanced: Badges & Recommendations
       setBadges(getBadges(username, 'worker'));
@@ -198,11 +196,16 @@ export default function WorkerPanel() {
     if (allProfilesStr) {
       const allProfiles: WorkerProfileData[] = JSON.parse(allProfilesStr);
       const myProfile = allProfiles.find(p => p.username === username);
-      if (myProfile) setProfileData(myProfile);
-      else setProfileData({ username, skills: [], bio: '', availabilityStatus: 'available' });
+      if (myProfile) {
+        setProfileData({ ...myProfile, regions: myProfile.regions || [] });
+      } else {
+        setProfileData({ username, skills: [], regions: [], bio: '', availabilityStatus: 'available' });
+      }
     } else {
-      setProfileData({ username, skills: [], bio: '', availabilityStatus: 'available' });
+      setProfileData({ username, skills: [], regions: [], bio: '', availabilityStatus: 'available' });
     }
+    
+    setProfileStrengthScore(calculateProfileStrength(username));
   };
 
   const loadSavedJobs = (username: string) => {
@@ -373,7 +376,6 @@ export default function WorkerPanel() {
 
     setProfileData(prev => ({ ...prev, skills: [...prev.skills, val] }));
     setSkillInput('');
-    // Clear error if fixed
     if (validationErrors.skills) setValidationErrors(prev => ({ ...prev, skills: undefined }));
   };
 
@@ -386,6 +388,32 @@ export default function WorkerPanel() {
 
   const removeSkill = (skill: string) => {
     setProfileData(prev => ({ ...prev, skills: prev.skills.filter(s => s !== skill) }));
+  };
+
+  // Region Handlers
+  const addRegion = () => {
+    const val = regionInput.trim();
+    if (!val) return;
+    
+    const currentRegions = profileData.regions || [];
+    if (currentRegions.some(r => r.toLowerCase() === val.toLowerCase())) {
+      setRegionInput('');
+      return;
+    }
+
+    setProfileData(prev => ({ ...prev, regions: [...(prev.regions || []), val] }));
+    setRegionInput('');
+  };
+
+  const handleRegionKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addRegion();
+    }
+  };
+
+  const removeRegion = (region: string) => {
+    setProfileData(prev => ({ ...prev, regions: (prev.regions || []).filter(r => r !== region) }));
   };
 
   const handleCompleteJob = (checklist: any, media: MediaItem[]) => {
@@ -421,7 +449,7 @@ export default function WorkerPanel() {
 
   if (!currentUser) return null;
 
-  // --- Filtering Logic for Tabs ---
+  // --- Filtering & Sorting Logic for Tabs ---
   const availableTabJobs = availableJobs.filter(job => {
     const hasApplied = job.applications.some(app => app.workerUsername === currentUser.username);
     const isAssigned = !!job.assignedWorkerUsername;
@@ -432,6 +460,17 @@ export default function WorkerPanel() {
     const matchesBudget = !minBudget || job.budget >= Number(minBudget);
 
     return job.status === 'open' && !hasApplied && !isAssigned && matchesSearch && matchesCategory && matchesBudget;
+  }).sort((a, b) => {
+    // Sort by Match Relevance: Best Match > Region/Skill Match > Others
+    const getScore = (job: JobPost) => {
+      const skillMatch = profileData.skills.some(s => job.category.toLowerCase().includes(s.toLowerCase()));
+      const regionMatch = profileData.regions?.some(r => job.address.toLowerCase().includes(r.toLowerCase()));
+      
+      if (skillMatch && regionMatch) return 3;
+      if (skillMatch || regionMatch) return 2;
+      return 1;
+    };
+    return getScore(b) - getScore(a);
   });
 
   const savedTabJobs = availableJobs.filter(job => savedJobs.includes(job.id));
@@ -463,19 +502,29 @@ export default function WorkerPanel() {
                 <HardHat className="text-blue-600" />
                 Worker Panel
               </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-gray-500 text-sm">
+              
+              {/* Profile Summary Strip */}
+              <div className="flex items-center gap-3 mt-1 text-sm">
+                <p className="text-gray-500">
                   Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
                 </p>
+                <span className="text-gray-300">|</span>
+                <button 
+                  onClick={() => setIsEditingProfile(true)}
+                  className={`font-medium hover:underline ${
+                    profileStrengthScore > 70 ? 'text-green-600' : profileStrengthScore > 30 ? 'text-yellow-600' : 'text-red-600'
+                  }`}
+                >
+                  Profile: {profileStrengthScore > 70 ? 'Strong' : profileStrengthScore > 30 ? 'Good' : 'Weak'} ({profileStrengthScore}%)
+                </button>
+                <span className="text-gray-300">|</span>
+                <div className="flex items-center gap-1">
+                   <div className={`w-2 h-2 rounded-full ${profileData.availabilityStatus === 'available' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                   <span className="text-gray-600">{profileData.availabilityStatus === 'available' ? 'Available' : 'Busy'}</span>
+                </div>
+                
                 <GamificationBadges badges={badges} />
                 {showPremium && <PremiumBadge username={currentUser.username} role="worker" />}
-                {/* Feature 4: Status Indicator */}
-                <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 ${
-                  profileData.availabilityStatus === 'available' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-100 text-gray-600 border-gray-200'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full ${profileData.availabilityStatus === 'available' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                  {profileData.availabilityStatus === 'available' ? 'Available' : 'Busy'}
-                </span>
               </div>
             </div>
           </div>
@@ -505,6 +554,7 @@ export default function WorkerPanel() {
               <div>
                 <p className="text-xs text-gray-500 font-medium">Jobs Completed</p>
                 <p className="text-xl font-bold text-gray-900">{stats.completed}</p>
+                {stats.completedThisMonth > 0 && <p className="text-[10px] text-green-600">This month: {stats.completedThisMonth}</p>}
               </div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
@@ -518,7 +568,7 @@ export default function WorkerPanel() {
               <div className="bg-amber-100 p-2.5 rounded-full text-amber-600"><Star size={20} /></div>
               <div>
                 <p className="text-xs text-gray-500 font-medium">Avg Rating</p>
-                <p className="text-xl font-bold text-gray-900">{stats.rating.toFixed(1)}</p>
+                <p className="text-xl font-bold text-gray-900">{reviews.length > 0 ? stats.rating.toFixed(1) : 'No reviews'}</p>
               </div>
             </div>
           </div>
@@ -526,6 +576,12 @@ export default function WorkerPanel() {
           {/* Availability & Strength */}
           <div className="lg:col-span-1 space-y-4">
             <AvailabilityScheduler username={currentUser.username} />
+            {profileData.availabilityStatus === 'busy' && (
+              <div className="bg-gray-50 border border-gray-200 p-3 rounded-lg text-xs text-gray-600 flex items-center gap-2">
+                <Clock size={14} className="text-gray-400" />
+                You are currently <strong>Busy</strong>. Switch to Available to receive more offers.
+              </div>
+            )}
           </div>
         </div>
 
@@ -610,7 +666,7 @@ export default function WorkerPanel() {
                 {(activeTab === 'available' ? availableTabJobs : savedTabJobs).length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <Search size={48} className="mx-auto text-gray-300 mb-3" />
-                    <p>No jobs found.</p>
+                    <p>{activeTab === 'saved' ? "You haven't saved any jobs yet. Click the bookmark icon on a job to save it." : "No jobs found matching your criteria."}</p>
                   </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
@@ -619,10 +675,27 @@ export default function WorkerPanel() {
                       const dist = showLoc ? getDistance(currentUser.username, job.address) : 0;
                       const lowestBid = showAuction && job.isAuction ? getLowestBid(job) : null;
                       const isSaved = savedJobs.includes(job.id);
+                      
+                      // Match Logic
+                      const skillMatch = profileData.skills.some(s => job.category.toLowerCase().includes(s.toLowerCase()));
+                      const regionMatch = profileData.regions?.some(r => job.address.toLowerCase().includes(r.toLowerCase()));
+                      const isBestMatch = skillMatch && regionMatch;
 
                       return (
-                        <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-                          <div className="p-5 flex-grow">
+                        <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col relative">
+                          {/* Match Badges */}
+                          {isBestMatch && (
+                            <div className="absolute top-0 left-0 bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1">
+                              <Sparkles size={10} /> BEST MATCH
+                            </div>
+                          )}
+                          {!isBestMatch && regionMatch && (
+                            <div className="absolute top-0 left-0 bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded-br-lg z-10 flex items-center gap-1">
+                              <MapPin size={10} /> REGION MATCH
+                            </div>
+                          )}
+
+                          <div className="p-5 flex-grow pt-8">
                             <div className="flex justify-between items-start mb-2">
                               <div>
                                 <h3 className="font-bold text-gray-900">{job.title}</h3>
@@ -644,6 +717,15 @@ export default function WorkerPanel() {
                             </div>
                             
                             <div className="space-y-2 mt-3 text-sm text-gray-600">
+                              <div className="flex items-center gap-2">
+                                <User size={14} className="text-gray-400" />
+                                <button 
+                                  onClick={() => setEmployerProfileModal({ isOpen: true, username: job.employerUsername })}
+                                  className="font-medium text-gray-900 hover:text-blue-600 hover:underline"
+                                >
+                                  {job.employerUsername}
+                                </button>
+                              </div>
                               <div className="flex items-center gap-2">
                                 <DollarSign size={14} className="text-gray-400" />
                                 {job.isAuction && showAuction ? (
@@ -720,6 +802,14 @@ export default function WorkerPanel() {
                               onChange={(e) => handleInputChange(job.id, 'message', e.target.value)}
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                             />
+                            
+                            {/* Busy Warning */}
+                            {profileData.availabilityStatus === 'busy' && (
+                              <p className="text-[10px] text-amber-600 flex items-center gap-1">
+                                <AlertTriangle size={10} /> Warning: You are marked as Busy.
+                              </p>
+                            )}
+                            
                             <button
                               onClick={() => handleSendOffer(job.id, job.employerUsername)}
                               className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors"
@@ -793,10 +883,19 @@ export default function WorkerPanel() {
                         <div className="flex justify-between">
                            <h3 className="font-bold text-gray-900">{job.title}</h3>
                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                              application.status === 'accepted' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              application.status === 'accepted' ? 'bg-green-100 text-green-700' : 
+                              application.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
                            }`}>{application.status}</span>
                         </div>
                         <p className="text-sm text-gray-500 mt-1">Offer: {application.offeredPrice} ₼</p>
+                        
+                        {application.status === 'accepted' && (
+                          <div className="mt-3 p-2 bg-green-50 rounded border border-green-100 text-xs text-green-800 flex items-center gap-2">
+                            <CheckCircle size={14} />
+                            Offer Accepted! Go to <button onClick={() => setActiveTab('progress')} className="underline font-bold">In Progress</button> tab.
+                          </div>
+                        )}
+
                         {application.status === 'pending' && (
                           <button 
                             onClick={() => handleCancelOffer(job.id, application.id)}
@@ -818,7 +917,7 @@ export default function WorkerPanel() {
                 {inProgressJobs.length === 0 ? (
                   <div className="text-center py-12 text-gray-500">
                     <PlayCircle size={48} className="mx-auto text-gray-300 mb-3" />
-                    <p>No jobs currently in progress.</p>
+                    <p>No active jobs currently.</p>
                   </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
@@ -883,13 +982,19 @@ export default function WorkerPanel() {
             {/* 4. COMPLETED TAB */}
             {activeTab === 'completed' && (
               <div className="space-y-4">
-                {/* ... (Same as before) ... */}
-                {completedJobs.map(job => (
-                   <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90">
-                      <h3 className="font-bold text-gray-900">{job.title}</h3>
-                      <p className="text-sm text-gray-500">Completed</p>
-                   </div>
-                ))}
+                {completedJobs.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <CheckSquare size={48} className="mx-auto text-gray-300 mb-3" />
+                    <p>No completed jobs yet — once you finish a job, it will appear here.</p>
+                  </div>
+                ) : (
+                  completedJobs.map(job => (
+                     <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90">
+                        <h3 className="font-bold text-gray-900">{job.title}</h3>
+                        <p className="text-sm text-gray-500">Completed on {job.completedAt ? new Date(job.completedAt).toLocaleDateString() : 'Unknown date'}</p>
+                     </div>
+                  ))
+                )}
               </div>
             )}
 
@@ -899,7 +1004,7 @@ export default function WorkerPanel() {
         {/* Profile Edit Modal */}
         {isEditingProfile && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Profile</h3>
               
               <div className="mb-6">
@@ -947,6 +1052,7 @@ export default function WorkerPanel() {
                   {validationErrors.bio && <p className="text-xs text-red-500 mt-1">{validationErrors.bio}</p>}
                 </div>
 
+                {/* Skills Input */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Skills</label>
                   <div className="flex gap-2 mb-2">
@@ -978,6 +1084,37 @@ export default function WorkerPanel() {
                     ))}
                   </div>
                 </div>
+
+                {/* Regions Input */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">Service Region(s)</label>
+                  <div className="flex gap-2 mb-2">
+                    <input 
+                      type="text" 
+                      value={regionInput}
+                      onChange={(e) => setRegionInput(e.target.value)}
+                      onKeyDown={handleRegionKeyDown}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Add a region (e.g. Baku)"
+                    />
+                    <button 
+                      onClick={addRegion}
+                      className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {(profileData.regions || []).map(region => (
+                      <span key={region} className="bg-indigo-50 text-indigo-700 px-2 py-1 rounded-lg text-xs flex items-center gap-1 border border-indigo-100">
+                        {region}
+                        <button onClick={() => removeRegion(region)} className="hover:text-indigo-900"><XCircle size={12} /></button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
               </div>
 
               <div className="flex gap-3 mt-6">
@@ -1014,6 +1151,16 @@ export default function WorkerPanel() {
           onSubmit={handleCompleteJob}
           job={completionModal.job!}
         />
+
+        {/* Employer Profile Modal (Read Only) */}
+        {employerProfileModal.isOpen && employerProfileModal.username && (
+          <EmployerProfileModal 
+            isOpen={employerProfileModal.isOpen}
+            onClose={() => setEmployerProfileModal({ isOpen: false, username: null })}
+            username={employerProfileModal.username}
+            readOnly={true}
+          />
+        )}
 
       </div>
     </div>

@@ -63,9 +63,9 @@ export default function ProfileStrength({ username }: { username: string }) {
               {checks.hasBio ? <CheckCircle size={12} /> : <Circle size={12} />}
               Write a bio (40+ chars)
             </li>
-            <li className={`flex items-center gap-2 ${checks.hasLocation ? 'text-green-600 line-through opacity-70' : 'text-gray-600'}`}>
-              {checks.hasLocation ? <CheckCircle size={12} /> : <Circle size={12} />}
-              Set your city/region
+            <li className={`flex items-center gap-2 ${checks.hasRegions ? 'text-green-600 line-through opacity-70' : 'text-gray-600'}`}>
+              {checks.hasRegions ? <CheckCircle size={12} /> : <Circle size={12} />}
+              Add service regions
             </li>
             <li className={`flex items-center gap-2 ${checks.hasActivity ? 'text-green-600 line-through opacity-70' : 'text-gray-600'}`}>
               {checks.hasActivity ? <CheckCircle size={12} /> : <Circle size={12} />}

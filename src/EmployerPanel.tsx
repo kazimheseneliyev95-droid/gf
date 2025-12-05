@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon } from 'lucide-react';
+import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon, Edit2, Layout } from 'lucide-react';
 import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY, MediaItem } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
@@ -17,11 +17,13 @@ import WorkerComparisonModal from './components/WorkerComparisonModal';
 import RiskAlert from './components/RiskAlert';
 import PremiumBadge from './components/PremiumBadge';
 import BehaviorScore from './components/BehaviorScore';
+import EditJobModal from './components/EditJobModal';
+import EmployerProfileModal from './components/EmployerProfileModal';
 
 export default function EmployerPanel() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ username: string, hasCompletedOnboarding?: boolean } | null>(null);
   
   // Form State
   const [title, setTitle] = useState('');
@@ -64,7 +66,7 @@ export default function EmployerPanel() {
   const [offerRatingMin, setOfferRatingMin] = useState<string>('');
 
   // Stats & Badges
-  const [stats, setStats] = useState({ posted: 0, completed: 0, avgSpend: 0 });
+  const [stats, setStats] = useState({ posted: 0, completed: 0, avgSpend: 0, open: 0 });
   const [badges, setBadges] = useState<any[]>([]);
   const [trustScore, setTrustScore] = useState(0);
 
@@ -83,6 +85,10 @@ export default function EmployerPanel() {
   const [comparisonModal, setComparisonModal] = useState<{isOpen: boolean, job: JobPost | null}>({
     isOpen: false, job: null
   });
+  const [editJobModal, setEditJobModal] = useState<{isOpen: boolean, job: JobPost | null}>({
+    isOpen: false, job: null
+  });
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // Rating Modal State
   const [ratingModal, setRatingModal] = useState<{ isOpen: boolean, jobId: string | null, workerUsername: string | null }>({
@@ -163,6 +169,7 @@ export default function EmployerPanel() {
 
       // Stats
       const completedJobs = filtered.filter(j => j.status === 'completed');
+      const openJobs = filtered.filter(j => j.status === 'open');
       let totalSpend = 0;
       completedJobs.forEach(j => {
         const acceptedApp = j.applications.find(a => a.status === 'accepted');
@@ -172,7 +179,8 @@ export default function EmployerPanel() {
       setStats({
         posted: filtered.length,
         completed: completedJobs.length,
-        avgSpend: completedJobs.length ? totalSpend / completedJobs.length : 0
+        avgSpend: completedJobs.length ? totalSpend / completedJobs.length : 0,
+        open: openJobs.length
       });
     }
   };
@@ -433,10 +441,18 @@ export default function EmployerPanel() {
                 <Briefcase className="text-blue-600" />
                 Employer Panel
               </h1>
-              <div className="flex items-center gap-2 mt-1">
-                <p className="text-gray-500 text-sm">
+              <div className="flex items-center gap-2 mt-1 text-sm">
+                <p className="text-gray-500">
                   Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span>
                 </p>
+                <span className="text-gray-300">|</span>
+                <button 
+                  onClick={() => setProfileModalOpen(true)}
+                  className="text-blue-600 hover:underline font-medium"
+                >
+                  Profile
+                </button>
+                <span className="text-gray-300">|</span>
                 <GamificationBadges badges={badges} />
                 <PremiumBadge username={currentUser.username} role="employer" />
                 {showBehavior && <BehaviorScore username={currentUser.username} role="employer" />}
@@ -453,8 +469,7 @@ export default function EmployerPanel() {
         </div>
 
         {/* Stats Dashboard */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* ... Stats Content ... */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
             <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Briefcase size={24} /></div>
             <div>
@@ -474,6 +489,14 @@ export default function EmployerPanel() {
             <div>
               <p className="text-sm text-gray-500">Avg Spend</p>
               <p className="text-2xl font-bold text-gray-900">{stats.avgSpend.toFixed(0)} ₼</p>
+              <p className="text-[10px] text-gray-400">per job</p>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div className="bg-amber-100 p-3 rounded-full text-amber-600"><Layout size={24} /></div>
+            <div>
+              <p className="text-sm text-gray-500">Open Jobs</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.open}</p>
             </div>
           </div>
         </div>
@@ -682,25 +705,33 @@ export default function EmployerPanel() {
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-gray-800">My Posted Jobs</h2>
               <div className="flex gap-2">
-                {(['all', 'open', 'processing', 'completed'] as const).map(status => (
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'open', label: `Open (${stats.open})` },
+                  { id: 'processing', label: 'Processing' },
+                  { id: 'completed', label: 'Completed' }
+                ].map(tab => (
                   <button
-                    key={status}
-                    onClick={() => setFilterStatus(status)}
+                    key={tab.id}
+                    onClick={() => setFilterStatus(tab.id as any)}
                     className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition-colors ${
-                      filterStatus === status 
+                      filterStatus === tab.id 
                         ? 'bg-blue-600 text-white' 
                         : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
-                    {status}
+                    {tab.label}
                   </button>
                 ))}
               </div>
             </div>
 
             {filteredJobs.length === 0 ? (
-              <div className="bg-white rounded-xl p-8 text-center border-2 border-dashed border-gray-200 text-gray-500">
-                No jobs found.
+              <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-200 text-gray-500">
+                {filterStatus === 'open' && "You have no open jobs. Post a new job to receive offers."}
+                {filterStatus === 'processing' && "No jobs in progress right now."}
+                {filterStatus === 'completed' && "No completed jobs yet."}
+                {filterStatus === 'all' && "No jobs found."}
               </div>
             ) : (
               <div className="grid gap-4">
@@ -735,7 +766,18 @@ export default function EmployerPanel() {
                             {job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}
                           </div>
                         </div>
-                        <button onClick={() => handleDeleteJob(job.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={18} /></button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => setEditJobModal({ isOpen: true, job })}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit Job"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button onClick={() => handleDeleteJob(job.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </div>
                       
                       <p className="text-sm text-gray-600 mt-2 line-clamp-2">{job.description}</p>
@@ -1117,6 +1159,25 @@ export default function EmployerPanel() {
             applications={comparisonModal.job.applications}
           />
         )}
+
+        {/* Edit Job Modal */}
+        {editJobModal.isOpen && editJobModal.job && (
+          <EditJobModal 
+            isOpen={editJobModal.isOpen}
+            onClose={() => setEditJobModal({ isOpen: false, job: null })}
+            job={editJobModal.job}
+            onSave={() => loadMyJobs(currentUser.username)}
+            currentUser={currentUser.username}
+          />
+        )}
+
+        {/* Employer Profile Modal */}
+        <EmployerProfileModal 
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          username={currentUser.username}
+          currentUser={currentUser.username}
+        />
 
       </div>
     </div>

@@ -111,9 +111,20 @@ export type WorkerReview = {
 export type WorkerProfileData = {
   username: string;
   skills: string[];
+  regions?: string[]; // New Field: Service Regions
   bio?: string;
   // Feature 4: Availability Status
   availabilityStatus?: 'available' | 'busy';
+};
+
+export type EmployerProfileData = {
+  username: string;
+  companyName?: string;
+  avatarUrl?: string;
+  city?: string;
+  regions?: string[];
+  bio?: string;
+  preferredCategories?: string[];
 };
 
 export type JobMessage = {
@@ -132,7 +143,8 @@ export type NotificationType =
   | "offerAccepted"
   | "offerRejected"
   | "newMessage"
-  | "jobReminder"; // Feature 2
+  | "jobReminder" // Feature 2
+  | "jobUpdated"; // Feature: Job Editing
 
 export type NotificationSection = "offers" | "chat" | "details";
 
@@ -232,6 +244,7 @@ export interface AdminSettings {
 export const JOB_STORAGE_KEY = 'jobPosts';
 export const REVIEW_STORAGE_KEY = 'workerReviews';
 export const WORKER_PROFILE_KEY = 'workerProfiles';
+export const EMPLOYER_PROFILE_KEY = 'employerProfiles';
 export const MESSAGE_STORAGE_KEY = 'jobMessages';
 export const NOTIFICATION_KEY = 'notifications';
 export const FAVORITE_WORKERS_KEY = 'favoriteWorkers';

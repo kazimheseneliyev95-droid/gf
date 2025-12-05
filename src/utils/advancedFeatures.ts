@@ -1,7 +1,7 @@
 import { 
-  User, JobPost, WorkerReview, JobApplication, WorkerProfileData, 
+  User, JobPost, WorkerReview, JobApplication, WorkerProfileData, EmployerProfileData,
   Badge, BadgeType, ActivityLog, Dispute, WorkerAvailability,
-  JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, 
+  JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, EMPLOYER_PROFILE_KEY,
   ACTIVITY_LOG_KEY, DISPUTE_STORAGE_KEY, AVAILABILITY_STORAGE_KEY, 
   USERS_STORAGE_KEY, WORKER_ONBOARDING_KEY, WorkerOnboardingData,
   UserRole
@@ -119,7 +119,7 @@ export const getProfileStrengthDetails = (username: string) => {
   const checks = {
     hasSkills: false,
     hasBio: false,
-    hasLocation: false,
+    hasRegions: false, // Updated: Check for regions
     hasActivity: false
   };
 
@@ -137,9 +137,10 @@ export const getProfileStrengthDetails = (username: string) => {
     score += 25;
   }
 
-  // 3. Location (+25%)
-  if (onboarding && onboarding.city) {
-    checks.hasLocation = true;
+  // 3. Regions (+25%) - Replaces simple location check, or combines with it
+  // We check if regions exist in profile OR city exists in onboarding
+  if ((profile && profile.regions && profile.regions.length > 0) || (onboarding && onboarding.city)) {
+    checks.hasRegions = true;
     score += 25;
   }
 
@@ -156,6 +157,19 @@ export const getProfileStrengthDetails = (username: string) => {
 
 export const calculateProfileStrength = (username: string): number => {
   return getProfileStrengthDetails(username).score;
+};
+
+// --- EMPLOYER PROFILE HELPERS ---
+export const getEmployerProfile = (username: string): EmployerProfileData | undefined => {
+  const profiles = getLocalData<EmployerProfileData>(EMPLOYER_PROFILE_KEY);
+  return profiles.find(p => p.username === username);
+};
+
+export const saveEmployerProfile = (data: EmployerProfileData) => {
+  const profiles = getLocalData<EmployerProfileData>(EMPLOYER_PROFILE_KEY);
+  const filtered = profiles.filter(p => p.username !== data.username);
+  filtered.push(data);
+  localStorage.setItem(EMPLOYER_PROFILE_KEY, JSON.stringify(filtered));
 };
 
 // --- 11. GAMIFICATION (BADGES) ---
@@ -210,17 +224,26 @@ export const getRecommendedJobs = (workerUsername: string): JobPost[] => {
   // Score candidates
   const scored = candidates.map(job => {
     let score = 0;
-    // Category match (simple string match in skills)
+    
+    // 1. Skill Match (Category)
     const hasSkill = profile.skills.some(s => 
       job.category.toLowerCase().includes(s.toLowerCase()) || 
       s.toLowerCase().includes(job.category.toLowerCase())
     );
     if (hasSkill) score += 50;
     
-    // Budget bonus (higher budget = better recommendation?)
+    // 2. Region Match (Address)
+    if (profile.regions && profile.regions.length > 0) {
+      const hasRegion = profile.regions.some(r => 
+        job.address.toLowerCase().includes(r.toLowerCase())
+      );
+      if (hasRegion) score += 30;
+    }
+
+    // 3. Budget bonus (higher budget = better recommendation?)
     if (job.budget > 100) score += 10;
     
-    // Recency
+    // 4. Recency
     const daysOld = (Date.now() - new Date(job.createdAt).getTime()) / (1000 * 60 * 60 * 24);
     if (daysOld < 3) score += 20;
 
@@ -257,13 +280,19 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
         score += 40;
         reasons.push("Skills match category");
       }
+
+      // 2. Region Match
+      if (profile.regions && profile.regions.some(r => job.address.toLowerCase().includes(r.toLowerCase()))) {
+        score += 30;
+        reasons.push("In service region");
+      }
     }
 
-    // 2. Quality Score
+    // 3. Quality Score
     score += (quality * 0.5);
     if (quality > 80) reasons.push("Top rated worker");
 
-    // 3. Availability (Bonus)
+    // 4. Availability (Bonus)
     const avail = getLocalData<WorkerAvailability>(AVAILABILITY_STORAGE_KEY).find(a => a.username === w.username);
     if (avail && avail.availableDays.length > 0) {
       score += 10;
