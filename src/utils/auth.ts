@@ -104,11 +104,11 @@ export const ensureDemoUsers = () => {
   let changed = false;
 
   if (!users.some(u => u.username === 'demoEmployer')) {
-    users.push({ username: 'demoEmployer', password: '123', role: 'employer', isActive: true });
+    users.push({ username: 'demoEmployer', password: '123', role: 'employer', isActive: true, hasCompletedOnboarding: true });
     changed = true;
   }
   if (!users.some(u => u.username === 'demoWorker')) {
-    users.push({ username: 'demoWorker', password: '123', role: 'worker', isActive: true });
+    users.push({ username: 'demoWorker', password: '123', role: 'worker', isActive: true, hasCompletedOnboarding: true });
     changed = true;
   }
 
@@ -118,27 +118,61 @@ export const ensureDemoUsers = () => {
 };
 
 // --- Onboarding Helpers ---
+
+export const setUserOnboardingComplete = (username: string) => {
+  const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+  if (!usersStr) return;
+  const users: User[] = JSON.parse(usersStr);
+  const updatedUsers = users.map(u => 
+    u.username === username ? { ...u, hasCompletedOnboarding: true } : u
+  );
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(updatedUsers));
+};
+
 export const hasCompletedOnboarding = (username: string, role: 'worker' | 'employer'): boolean => {
+  // 1. Check User Object Flag
+  const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
+  const users: User[] = usersStr ? JSON.parse(usersStr) : [];
+  const user = users.find(u => u.username === username);
+  
+  if (user && user.hasCompletedOnboarding === true) {
+    return true;
+  }
+
+  // 2. Fallback: Check Legacy Storage (Self-healing)
+  let legacyCompleted = false;
   if (role === 'worker') {
     const dataStr = localStorage.getItem(WORKER_ONBOARDING_KEY);
-    if (!dataStr) return false;
-    const data: WorkerOnboardingData[] = JSON.parse(dataStr);
-    return data.some(d => d.username === username);
+    if (dataStr) {
+      const data: WorkerOnboardingData[] = JSON.parse(dataStr);
+      legacyCompleted = data.some(d => d.username === username);
+    }
   } else {
     const dataStr = localStorage.getItem(EMPLOYER_PREFS_KEY);
-    if (!dataStr) return false;
-    const data: EmployerPreferences[] = JSON.parse(dataStr);
-    return data.some(d => d.username === username);
+    if (dataStr) {
+      const data: EmployerPreferences[] = JSON.parse(dataStr);
+      legacyCompleted = data.some(d => d.username === username);
+    }
   }
+
+  // If legacy check passed, update the user object so next time it's faster
+  if (legacyCompleted && user) {
+    setUserOnboardingComplete(username);
+    return true;
+  }
+
+  return false;
 };
 
 export const saveWorkerOnboarding = (data: WorkerOnboardingData) => {
   const str = localStorage.getItem(WORKER_ONBOARDING_KEY);
   const all: WorkerOnboardingData[] = str ? JSON.parse(str) : [];
-  // Remove old if exists
   const filtered = all.filter(d => d.username !== data.username);
   filtered.push(data);
   localStorage.setItem(WORKER_ONBOARDING_KEY, JSON.stringify(filtered));
+  
+  // Update User Flag
+  setUserOnboardingComplete(data.username);
 };
 
 export const saveEmployerPreferences = (data: EmployerPreferences) => {
@@ -147,4 +181,7 @@ export const saveEmployerPreferences = (data: EmployerPreferences) => {
   const filtered = all.filter(d => d.username !== data.username);
   filtered.push(data);
   localStorage.setItem(EMPLOYER_PREFS_KEY, JSON.stringify(filtered));
+
+  // Update User Flag
+  setUserOnboardingComplete(data.username);
 };

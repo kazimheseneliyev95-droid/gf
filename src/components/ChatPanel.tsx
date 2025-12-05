@@ -9,14 +9,20 @@ interface ChatPanelProps {
   otherUsername: string;
   currentUserRole: 'employer' | 'worker';
   jobTitle: string;
+  forceOpen?: boolean; // New prop
 }
 
-export default function ChatPanel({ jobId, currentUsername, otherUsername, currentUserRole, jobTitle }: ChatPanelProps) {
+export default function ChatPanel({ jobId, currentUsername, otherUsername, currentUserRole, jobTitle, forceOpen }: ChatPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<JobMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Handle force open
+  useEffect(() => {
+    if (forceOpen) setIsOpen(true);
+  }, [forceOpen]);
 
   const loadMessages = () => {
     const allMsgsStr = localStorage.getItem(MESSAGE_STORAGE_KEY);
@@ -94,7 +100,7 @@ export default function ChatPanel({ jobId, currentUsername, otherUsername, curre
     setMessages([...messages, msg]);
     setNewMessage('');
 
-    createNotification(otherUsername, 'newMessage', jobId, { senderName: currentUsername });
+    createNotification(otherUsername, 'newMessage', jobId, { senderName: currentUsername }, 'chat');
   };
 
   // Group messages by date

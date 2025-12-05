@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { LogOut, Briefcase, MapPin, Clock, DollarSign, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, XCircle, Star, PlayCircle, CheckSquare, Heart, Filter, Search, AlertTriangle, Map, List, Gavel, Upload, Image as ImageIcon } from 'lucide-react';
 import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, JobCategory, JOB_CATEGORIES, FavoriteWorker, FAVORITE_WORKERS_KEY, MediaItem } from './types';
 import NotificationCenter from './components/NotificationCenter';
@@ -20,6 +20,7 @@ import BehaviorScore from './components/BehaviorScore';
 
 export default function EmployerPanel() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
   
   // Form State
@@ -50,6 +51,7 @@ export default function EmployerPanel() {
   const [myJobs, setMyJobs] = useState<JobPost[]>([]);
   const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number })[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [activeChatJobId, setActiveChatJobId] = useState<string | null>(null);
 
   // Advanced: Suggestions
   const [suggestedWorkers, setSuggestedWorkers] = useState<{ username: string, score: number, matchReason: string }[]>([]);
@@ -113,6 +115,32 @@ export default function EmployerPanel() {
       navigate('/');
     }
   }, [navigate]);
+
+  // Feature: Notification Navigation Handler
+  useEffect(() => {
+    const jobId = searchParams.get('jobId');
+    const section = searchParams.get('section');
+
+    if (jobId) {
+      // Expand the job
+      setExpandedJobId(jobId);
+      setSuggestedWorkers(getRecommendedWorkers(jobId));
+      
+      // Scroll to job
+      // We use a timeout to allow render
+      setTimeout(() => {
+        const element = document.getElementById(`job-${jobId}`);
+        if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+
+      // Handle section
+      if (section === 'chat') {
+        setActiveChatJobId(jobId);
+      } else {
+        setActiveChatJobId(null);
+      }
+    }
+  }, [searchParams, myJobs.length]);
 
   const loadMyJobs = (username: string) => {
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
@@ -179,7 +207,8 @@ export default function EmployerPanel() {
 
     if (!currentUser) return;
 
-    if (!title || !description || !budget || !address || !days) {
+    // Validation: Budget is required ONLY if NOT auction
+    if (!title || !description || (!isAuction && !budget) || !address || !days) {
       setError('Please fill in all fields.');
       return;
     }
@@ -189,7 +218,7 @@ export default function EmployerPanel() {
       employerUsername: currentUser.username,
       title,
       description,
-      budget: Number(budget),
+      budget: isAuction ? 0 : Number(budget), // Set budget to 0 if auction
       address,
       daysToComplete: Number(days),
       createdAt: new Date().toISOString(),
@@ -261,7 +290,7 @@ export default function EmployerPanel() {
     logActivity(currentUser!.username, 'employer', 'OFFER_ACCEPTED', { jobId, workerUsername });
 
     if (currentUser) loadMyJobs(currentUser.username);
-    createNotification(workerUsername, 'offerAccepted', jobId, { employerName: currentUser?.username });
+    createNotification(workerUsername, 'offerAccepted', jobId, { employerName: currentUser?.username }, 'details');
   };
 
   const handleRejectOffer = (jobId: string, applicationId: string, workerUsername: string) => {
@@ -285,7 +314,7 @@ export default function EmployerPanel() {
       logActivity(currentUser!.username, 'employer', 'OFFER_REJECTED', { jobId, workerUsername });
 
       if (currentUser) loadMyJobs(currentUser.username);
-      createNotification(workerUsername, 'offerRejected', jobId, { employerName: currentUser?.username });
+      createNotification(workerUsername, 'offerRejected', jobId, { employerName: currentUser?.username }, 'details');
     }
   };
 
@@ -425,6 +454,7 @@ export default function EmployerPanel() {
 
         {/* Stats Dashboard */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* ... Stats Content ... */}
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
             <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Briefcase size={24} /></div>
             <div>
@@ -459,6 +489,7 @@ export default function EmployerPanel() {
                 <Plus className="text-blue-500" size={20} /> Post New Job
               </h2>
               <form onSubmit={handleCreateJob} className="space-y-4">
+                {/* ... Form Inputs ... */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-700 mb-1">Job Title</label>
                   <input type="text" placeholder="e.g. House Painting" value={title} onChange={e => setTitle(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
@@ -476,12 +507,54 @@ export default function EmployerPanel() {
                   </select>
                 </div>
 
+                {/* Price Type Selection (Auction Mode) */}
+                {showAuction && (
+                  <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
+                    <label className="block text-xs font-semibold text-purple-900 mb-2">Price Type</label>
+                    <div className="flex gap-3">
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input 
+                          type="radio" 
+                          name="priceType" 
+                          checked={!isAuction} 
+                          onChange={() => setIsAuction(false)}
+                          className="text-blue-600 focus:ring-blue-500" 
+                        />
+                        Fixed Price
+                      </label>
+                      <label className="flex items-center gap-2 text-xs cursor-pointer">
+                        <input 
+                          type="radio" 
+                          name="priceType" 
+                          checked={isAuction} 
+                          onChange={() => { setIsAuction(true); setBudget(''); }}
+                          className="text-blue-600 focus:ring-blue-500" 
+                        />
+                        <span className="flex items-center gap-1 text-purple-700 font-bold">
+                          <Gavel size={12} /> Open Bidding
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Budget (₼)</label>
+                    <label className={`block text-xs font-semibold mb-1 ${isAuction ? 'text-gray-400' : 'text-gray-700'}`}>Budget (₼)</label>
                     <div className="relative">
-                      <DollarSign className="absolute left-2.5 top-2.5 text-gray-400" size={14} />
-                      <input type="number" placeholder="150" value={budget} onChange={e => setBudget(e.target.value)} className="w-full pl-8 pr-2 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                      <DollarSign className={`absolute left-2.5 top-2.5 ${isAuction ? 'text-gray-300' : 'text-gray-400'}`} size={14} />
+                      <input 
+                        type="number" 
+                        placeholder={isAuction ? "Determined by bids" : "150"} 
+                        value={isAuction ? '' : budget} 
+                        onChange={e => setBudget(e.target.value)} 
+                        disabled={isAuction}
+                        className={`w-full pl-8 pr-2 py-2 border rounded-lg text-sm outline-none ${
+                          isAuction 
+                            ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed' 
+                            : 'border-gray-200 focus:ring-2 focus:ring-blue-500'
+                        }`} 
+                      />
                     </div>
                   </div>
                   <div>
@@ -569,36 +642,6 @@ export default function EmployerPanel() {
                   <input type="text" placeholder="urgent, night shift" value={tags} onChange={e => setTags(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
 
-                {showAuction && (
-                  <div className="bg-purple-50 p-3 rounded-lg border border-purple-100">
-                    <label className="block text-xs font-semibold text-purple-900 mb-2">Price Type</label>
-                    <div className="flex gap-3">
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input 
-                          type="radio" 
-                          name="priceType" 
-                          checked={!isAuction} 
-                          onChange={() => setIsAuction(false)}
-                          className="text-blue-600 focus:ring-blue-500" 
-                        />
-                        Fixed Price
-                      </label>
-                      <label className="flex items-center gap-2 text-xs cursor-pointer">
-                        <input 
-                          type="radio" 
-                          name="priceType" 
-                          checked={isAuction} 
-                          onChange={() => setIsAuction(true)}
-                          className="text-blue-600 focus:ring-blue-500" 
-                        />
-                        <span className="flex items-center gap-1 text-purple-700 font-bold">
-                          <Gavel size={12} /> Open Bidding
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-
                 {error && <p className="text-xs text-red-600">{error}</p>}
                 {success && <p className="text-xs text-green-600">{success}</p>}
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors shadow-sm">Post Job</button>
@@ -662,7 +705,7 @@ export default function EmployerPanel() {
             ) : (
               <div className="grid gap-4">
                 {filteredJobs.map((job) => (
-                  <div key={job.id} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
+                  <div key={job.id} id={`job-${job.id}`} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${
                     job.status === 'completed' ? 'border-gray-200 opacity-90' : 
                     job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
                   }`}>
@@ -688,7 +731,9 @@ export default function EmployerPanel() {
                               </span>
                             )}
                           </div>
-                          <div className="text-blue-600 font-bold text-xl mt-1">{job.budget} ₼</div>
+                          <div className="text-blue-600 font-bold text-xl mt-1">
+                            {job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}
+                          </div>
                         </div>
                         <button onClick={() => handleDeleteJob(job.id)} className="text-gray-300 hover:text-red-500 p-1"><Trash2 size={18} /></button>
                       </div>
@@ -729,6 +774,7 @@ export default function EmployerPanel() {
                               otherUsername={job.assignedWorkerUsername} 
                               currentUserRole="employer"
                               jobTitle={job.title}
+                              forceOpen={activeChatJobId === job.id}
                             />
                           )}
 

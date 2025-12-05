@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Check, MessageSquare, Briefcase, XCircle, CheckCircle } from 'lucide-react';
 import { Notification, NOTIFICATION_KEY } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 interface NotificationCenterProps {
   username: string;
@@ -10,6 +11,7 @@ export default function NotificationCenter({ username }: NotificationCenterProps
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const navigate = useNavigate();
 
   const loadNotifications = () => {
     const allNotesStr = localStorage.getItem(NOTIFICATION_KEY);
@@ -51,6 +53,25 @@ export default function NotificationCenter({ username }: NotificationCenterProps
     }
   };
 
+  const handleNotificationClick = (n: Notification) => {
+    markAsRead(n.id);
+    setIsOpen(false);
+
+    if (n.jobId) {
+      // Navigate with query params to trigger panel logic
+      const searchParams = new URLSearchParams();
+      searchParams.set('jobId', n.jobId);
+      if (n.section) searchParams.set('section', n.section);
+      
+      // Determine base path based on user role (we assume user is already in their panel, but this handles cross-nav if needed)
+      // Since we don't know role here easily without passing it, we assume current location is fine or we use window.location
+      // Better: just push to current path with params
+      navigate({
+        search: searchParams.toString()
+      });
+    }
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'newOffer': return <Briefcase size={16} className="text-blue-600" />;
@@ -67,7 +88,7 @@ export default function NotificationCenter({ username }: NotificationCenterProps
       case 'offerAccepted': return `Your offer was accepted by ${n.payload?.employerName}`;
       case 'offerRejected': return `Your offer was rejected by ${n.payload?.employerName}`;
       case 'newMessage': return `New message from ${n.payload?.senderName}`;
-      default: return 'New notification';
+      default: return n.payload?.message || 'New notification';
     }
   };
 
@@ -107,7 +128,7 @@ export default function NotificationCenter({ username }: NotificationCenterProps
                 notifications.map(n => (
                   <div 
                     key={n.id} 
-                    onClick={() => markAsRead(n.id)}
+                    onClick={() => handleNotificationClick(n)}
                     className={`p-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors flex gap-3 ${!n.isRead ? 'bg-blue-50/50' : ''}`}
                   >
                     <div className="mt-1 bg-white p-1.5 rounded-full shadow-sm border border-gray-100 h-fit">

@@ -12,6 +12,8 @@ export interface User {
   isActive?: boolean;
   location?: string; 
   coordinates?: { lat: number; lng: number };
+  // Feature: Onboarding Flag
+  hasCompletedOnboarding?: boolean;
 }
 
 export type ApplicationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
@@ -132,11 +134,14 @@ export type NotificationType =
   | "newMessage"
   | "jobReminder"; // Feature 2
 
+export type NotificationSection = "offers" | "chat" | "details";
+
 export type Notification = {
   id: string;
   username: string; // recipient
   type: NotificationType;
   jobId: string;
+  section?: NotificationSection; // Feature: Navigation Section
   createdAt: string;
   isRead: boolean;
   payload?: any; 

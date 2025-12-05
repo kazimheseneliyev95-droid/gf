@@ -3,7 +3,7 @@ import {
   Badge, BadgeType, ActivityLog, Dispute, WorkerAvailability,
   JOB_STORAGE_KEY, REVIEW_STORAGE_KEY, WORKER_PROFILE_KEY, 
   ACTIVITY_LOG_KEY, DISPUTE_STORAGE_KEY, AVAILABILITY_STORAGE_KEY, 
-  USERS_STORAGE_KEY,
+  USERS_STORAGE_KEY, WORKER_ONBOARDING_KEY, WorkerOnboardingData,
   UserRole
 } from '../types';
 
@@ -109,18 +109,53 @@ export const calculateEmployerTrust = (employerUsername: string): number => {
 };
 
 // --- 6. PROFILE STRENGTH ---
-export const calculateProfileStrength = (username: string): number => {
+export const getProfileStrengthDetails = (username: string) => {
   const profiles = getLocalData<WorkerProfileData>(WORKER_PROFILE_KEY);
   const profile = profiles.find(p => p.username === username);
-  
-  if (!profile) return 0;
+  const onboarding = getLocalData<WorkerOnboardingData>(WORKER_ONBOARDING_KEY).find(o => o.username === username);
+  const jobs = getLocalData<JobPost>(JOB_STORAGE_KEY);
+  const reviews = getLocalData<WorkerReview>(REVIEW_STORAGE_KEY);
+
+  const checks = {
+    hasSkills: false,
+    hasBio: false,
+    hasLocation: false,
+    hasActivity: false
+  };
 
   let score = 0;
-  if (profile.bio && profile.bio.length > 20) score += 40;
-  if (profile.skills && profile.skills.length > 0) score += 30;
-  if (profile.skills && profile.skills.length >= 3) score += 30;
 
-  return score;
+  // 1. Skills (+25%)
+  if (profile && profile.skills && profile.skills.length > 0) {
+    checks.hasSkills = true;
+    score += 25;
+  }
+
+  // 2. Bio (+25%) - Must be >= 40 chars
+  if (profile && profile.bio && profile.bio.trim().length >= 40) {
+    checks.hasBio = true;
+    score += 25;
+  }
+
+  // 3. Location (+25%)
+  if (onboarding && onboarding.city) {
+    checks.hasLocation = true;
+    score += 25;
+  }
+
+  // 4. Activity (+25%) - Completed jobs OR Rating
+  const completedCount = jobs.filter(j => j.assignedWorkerUsername === username && j.status === 'completed').length;
+  const hasRating = reviews.some(r => r.workerUsername === username);
+  if (completedCount > 0 || hasRating) {
+    checks.hasActivity = true;
+    score += 25;
+  }
+
+  return { score, checks };
+};
+
+export const calculateProfileStrength = (username: string): number => {
+  return getProfileStrengthDetails(username).score;
 };
 
 // --- 11. GAMIFICATION (BADGES) ---

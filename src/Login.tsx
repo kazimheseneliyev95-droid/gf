@@ -6,7 +6,7 @@ import {
 } from './types';
 import { 
   ensureDemoUsers, hasCompletedOnboarding, saveWorkerOnboarding, 
-  saveEmployerPreferences 
+  saveEmployerPreferences, setUserOnboardingComplete
 } from './utils/auth';
 import { initializeAdmin } from './utils';
 
@@ -129,7 +129,7 @@ export default function Login() {
     }
 
     // Create User
-    const newUser: User = { username, password: pass, role, isActive: true };
+    const newUser: User = { username, password: pass, role, isActive: true, hasCompletedOnboarding: false };
     users.push(newUser);
     localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 
@@ -156,6 +156,13 @@ export default function Login() {
     redirectUser(tempUser.role);
   };
 
+  const handleSkipOnboarding = () => {
+    if (!tempUser) return;
+    // Mark as completed without saving extra data
+    setUserOnboardingComplete(tempUser.username);
+    redirectUser(tempUser.role);
+  };
+
   // --- RENDER ---
 
   return (
@@ -169,10 +176,7 @@ export default function Login() {
           onLoginClick={() => setView('login')}
           lastSession={lastSession}
           onContinueSession={() => {
-            if (lastSession) handleLogin(lastSession.username, '123', true); // Assuming token/auto-login logic, here simplified re-login or just redirect if session valid
-            // In a real app, we'd check a token. Here, we just redirect if localStorage 'currentUser' was set, but we cleared it on logout.
-            // For this demo, "Continue as" will just pre-fill login or try to auto-login if we stored password (unsafe) or just redirect if we assume session persistence.
-            // Let's just redirect to login with pre-filled username for safety in this demo context.
+            if (lastSession) handleLogin(lastSession.username, '123', true); 
             setView('login');
           }}
           onSwitchAccount={() => {
@@ -210,7 +214,7 @@ export default function Login() {
           lang={lang}
           username={tempUser.username}
           onComplete={handleOnboardingComplete}
-          onSkip={() => redirectUser('worker')}
+          onSkip={handleSkipOnboarding}
         />
       )}
 
@@ -219,7 +223,7 @@ export default function Login() {
           lang={lang}
           username={tempUser.username}
           onComplete={handleOnboardingComplete}
-          onSkip={() => redirectUser('employer')}
+          onSkip={handleSkipOnboarding}
         />
       )}
     </>

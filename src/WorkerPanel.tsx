@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   LogOut, HardHat, MapPin, Clock, DollarSign, Send, User, 
   CheckCircle, XCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, Trash2, 
-  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell
+  MessageSquare, Star, AlertCircle, Filter, AlertTriangle, Sparkles, Map, Gavel, RefreshCw, Bookmark, Bell, Plus
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
@@ -31,6 +31,7 @@ type Tab = 'available' | 'recommended' | 'saved' | 'offers' | 'progress' | 'comp
 
 export default function WorkerPanel() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [currentUser, setCurrentUser] = useState<{ username: string } | null>(null);
   const [availableJobs, setAvailableJobs] = useState<JobPost[]>([]);
   const [reviews, setReviews] = useState<WorkerReview[]>([]);
@@ -38,6 +39,7 @@ export default function WorkerPanel() {
   // UI State
   const [activeTab, setActiveTab] = useState<Tab>('available');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [activeChatJobId, setActiveChatJobId] = useState<string | null>(null);
 
   // Inputs
   const [applicationInputs, setApplicationInputs] = useState<{ [key: string]: { price: string, message: string, canMeetDeadline: boolean } }>({});
@@ -51,6 +53,7 @@ export default function WorkerPanel() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState<WorkerProfileData>({ username: '', skills: [], bio: '', availabilityStatus: 'available' });
   const [skillInput, setSkillInput] = useState('');
+  const [validationErrors, setValidationErrors] = useState<{ bio?: string, skills?: string }>({});
 
   // Stats & Badges
   const [stats, setStats] = useState({ completed: 0, earned: 0, rating: 0 });
@@ -92,6 +95,36 @@ export default function WorkerPanel() {
       navigate('/');
     }
   }, [navigate]);
+
+  // Feature: Notification Navigation Handler
+  useEffect(() => {
+    const jobId = searchParams.get('jobId');
+    const section = searchParams.get('section');
+
+    if (jobId) {
+      // Find the job to determine which tab to open
+      const job = availableJobs.find(j => j.id === jobId);
+      if (job) {
+        if (job.status === 'processing') setActiveTab('progress');
+        else if (job.status === 'completed') setActiveTab('completed');
+        else if (job.applications.some(a => a.workerUsername === currentUser?.username)) setActiveTab('offers');
+        else setActiveTab('available');
+
+        // Handle chat section
+        if (section === 'chat') {
+          setActiveChatJobId(jobId);
+        } else {
+          setActiveChatJobId(null);
+        }
+
+        // Scroll to job
+        setTimeout(() => {
+          const element = document.getElementById(`job-${jobId}`);
+          if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 300);
+      }
+    }
+  }, [searchParams, availableJobs.length]);
 
   // Feature 2: Auto Reminder Check
   useEffect(() => {
@@ -257,7 +290,7 @@ export default function WorkerPanel() {
       job.applications.push(newApplication);
       logActivity(currentUser.username, 'worker', 'OFFER_SENT', { jobId, price: inputs.price });
       setSuccessMessage("Offer sent successfully!");
-      createNotification(employerUsername, 'newOffer', jobId, { workerName: currentUser.username });
+      createNotification(employerUsername, 'newOffer', jobId, { workerName: currentUser.username }, 'offers');
     }
 
     localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
@@ -298,6 +331,25 @@ export default function WorkerPanel() {
 
   const handleSaveProfile = () => {
     if (!currentUser) return;
+    
+    // Validation
+    const errors: { bio?: string, skills?: string } = {};
+    let isValid = true;
+
+    if (profileData.bio && profileData.bio.trim().length < 40) {
+      errors.bio = "Please write a bit more about yourself (at least 40 characters).";
+      isValid = false;
+    }
+
+    if (profileData.skills.length === 0) {
+      errors.skills = "Add at least one skill to appear in relevant job matches.";
+      isValid = false;
+    }
+
+    setValidationErrors(errors);
+
+    if (!isValid) return;
+
     const allProfilesStr = localStorage.getItem(WORKER_PROFILE_KEY);
     const allProfiles: WorkerProfileData[] = allProfilesStr ? JSON.parse(allProfilesStr) : [];
     
@@ -311,9 +363,24 @@ export default function WorkerPanel() {
   };
 
   const addSkill = () => {
-    if (skillInput.trim() && !profileData.skills.includes(skillInput.trim())) {
-      setProfileData(prev => ({ ...prev, skills: [...prev.skills, skillInput.trim()] }));
+    const val = skillInput.trim();
+    if (!val) return;
+    
+    if (profileData.skills.some(s => s.toLowerCase() === val.toLowerCase())) {
       setSkillInput('');
+      return;
+    }
+
+    setProfileData(prev => ({ ...prev, skills: [...prev.skills, val] }));
+    setSkillInput('');
+    // Clear error if fixed
+    if (validationErrors.skills) setValidationErrors(prev => ({ ...prev, skills: undefined }));
+  };
+
+  const handleSkillKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addSkill();
     }
   };
 
@@ -337,15 +404,9 @@ export default function WorkerPanel() {
       };
       if (!allJobs[jobIndex].media) allJobs[jobIndex].media = { before: [], after: [] };
       allJobs[jobIndex].media!.after = media;
-
-      // We don't change status to 'completed' yet, we wait for employer confirmation?
-      // Prompt says "When worker marks job as completed... Show checklist... Worker must check... When employer reviews... Employer confirms".
-      // So worker submits request. We can keep status as 'processing' but maybe add a flag or just rely on checklist existence.
-      // For simplicity, let's assume worker marking it "completed" sets a provisional state or we just save the checklist.
-      // Let's save checklist and notify employer.
       
       localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
-      createNotification(allJobs[jobIndex].employerUsername, 'jobReminder', allJobs[jobIndex].id, { message: "Worker has completed the job. Please review." });
+      createNotification(allJobs[jobIndex].employerUsername, 'jobReminder', allJobs[jobIndex].id, { message: "Worker has completed the job. Please review." }, 'details');
       
       alert("Completion details submitted. Employer will review.");
       setCompletionModal({ isOpen: false, job: null });
@@ -560,7 +621,7 @@ export default function WorkerPanel() {
                       const isSaved = savedJobs.includes(job.id);
 
                       return (
-                        <div key={job.id} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
+                        <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
                           <div className="p-5 flex-grow">
                             <div className="flex justify-between items-start mb-2">
                               <div>
@@ -585,7 +646,11 @@ export default function WorkerPanel() {
                             <div className="space-y-2 mt-3 text-sm text-gray-600">
                               <div className="flex items-center gap-2">
                                 <DollarSign size={14} className="text-gray-400" />
-                                <span className="font-semibold text-gray-900">{job.budget} ₼</span>
+                                {job.isAuction && showAuction ? (
+                                  <span className="font-semibold text-purple-600">Open Bidding</span>
+                                ) : (
+                                  <span className="font-semibold text-gray-900">{job.budget} ₼</span>
+                                )}
                                 {job.isAuction && showAuction && (
                                   <span className="text-xs text-purple-600 font-medium ml-2">
                                     (Best Offer: {lowestBid ? `${lowestBid} ₼` : 'None'})
@@ -688,7 +753,7 @@ export default function WorkerPanel() {
                     {recommendedJobs.map(job => {
                       const inputs = applicationInputs[job.id] || { price: '', message: '', canMeetDeadline: true };
                       return (
-                        <div key={job.id} className="bg-white rounded-xl border-2 border-purple-100 shadow-sm p-5">
+                        <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border-2 border-purple-100 shadow-sm p-5">
                           <h3 className="font-bold text-gray-900">{job.title}</h3>
                           <div className="mt-2">
                              <input
@@ -724,7 +789,7 @@ export default function WorkerPanel() {
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {myOffersJobs.map(({ job, application }) => (
-                      <div key={application.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                      <div key={application.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
                         <div className="flex justify-between">
                            <h3 className="font-bold text-gray-900">{job.title}</h3>
                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
@@ -760,7 +825,7 @@ export default function WorkerPanel() {
                     {inProgressJobs.map(job => {
                       const myApp = job.applications.find(a => a.workerUsername === currentUser.username);
                       return (
-                        <div key={job.id} className="bg-white rounded-xl border border-blue-200 shadow-sm p-5 ring-1 ring-blue-50">
+                        <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-blue-200 shadow-sm p-5 ring-1 ring-blue-50">
                           <div className="flex justify-between items-start mb-3">
                             <div>
                               <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
@@ -797,6 +862,7 @@ export default function WorkerPanel() {
                               otherUsername={job.employerUsername} 
                               currentUserRole="worker"
                               jobTitle={job.title}
+                              forceOpen={activeChatJobId === job.id}
                             />
                             <button 
                               onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
@@ -819,7 +885,7 @@ export default function WorkerPanel() {
               <div className="space-y-4">
                 {/* ... (Same as before) ... */}
                 {completedJobs.map(job => (
-                   <div key={job.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90">
+                   <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 opacity-90">
                       <h3 className="font-bold text-gray-900">{job.title}</h3>
                       <p className="text-sm text-gray-500">Completed</p>
                    </div>
@@ -873,9 +939,12 @@ export default function WorkerPanel() {
                   <textarea 
                     value={profileData.bio || ''}
                     onChange={(e) => setProfileData({...profileData, bio: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none ${
+                      validationErrors.bio ? 'border-red-500' : 'border-gray-200'
+                    }`}
                     placeholder="Tell employers about yourself..."
                   />
+                  {validationErrors.bio && <p className="text-xs text-red-500 mt-1">{validationErrors.bio}</p>}
                 </div>
 
                 <div>
@@ -885,16 +954,21 @@ export default function WorkerPanel() {
                       type="text" 
                       value={skillInput}
                       onChange={(e) => setSkillInput(e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      onKeyDown={handleSkillKeyDown}
+                      className={`flex-1 px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none ${
+                        validationErrors.skills ? 'border-red-500' : 'border-gray-200'
+                      }`}
                       placeholder="Add a skill (e.g. Plumbing)"
                     />
                     <button 
                       onClick={addSkill}
                       className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium"
                     >
-                      Add
+                      <Plus size={16} />
                     </button>
                   </div>
+                  {validationErrors.skills && <p className="text-xs text-red-500 mb-2">{validationErrors.skills}</p>}
+                  
                   <div className="flex flex-wrap gap-2">
                     {profileData.skills.map(skill => (
                       <span key={skill} className="bg-gray-100 text-gray-700 px-2 py-1 rounded-lg text-xs flex items-center gap-1">

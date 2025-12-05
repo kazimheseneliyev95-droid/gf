@@ -1,4 +1,4 @@
-import { NOTIFICATION_KEY, Notification, NotificationType, MESSAGE_STORAGE_KEY, JobMessage, REVIEW_STORAGE_KEY, WorkerReview, USERS_STORAGE_KEY, User } from './types';
+import { NOTIFICATION_KEY, Notification, NotificationType, MESSAGE_STORAGE_KEY, JobMessage, REVIEW_STORAGE_KEY, WorkerReview, USERS_STORAGE_KEY, User, NotificationSection } from './types';
 
 export const initializeAdmin = () => {
   const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
@@ -24,7 +24,8 @@ export const createNotification = (
   recipientUsername: string, 
   type: NotificationType, 
   jobId: string, 
-  payload?: any
+  payload?: any,
+  section?: NotificationSection // Added section param
 ) => {
   const allNotesStr = localStorage.getItem(NOTIFICATION_KEY);
   const allNotes: Notification[] = allNotesStr ? JSON.parse(allNotesStr) : [];
@@ -34,6 +35,7 @@ export const createNotification = (
     username: recipientUsername,
     type,
     jobId,
+    section,
     createdAt: new Date().toISOString(),
     isRead: false,
     payload
