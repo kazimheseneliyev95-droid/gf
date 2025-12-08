@@ -113,6 +113,13 @@ export default function WorkerPanel() {
     }
   }, [navigate]);
 
+  // Polling for data updates
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(() => loadData(currentUser.username), 5000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
   useEffect(() => {
     const jobId = searchParams.get('jobId');
     const section = searchParams.get('section');
@@ -250,8 +257,8 @@ export default function WorkerPanel() {
     
     const allProfilesStr = localStorage.getItem(WORKER_PROFILE_KEY);
     const allProfiles: WorkerProfileData[] = allProfilesStr ? JSON.parse(allProfilesStr) : [];
-    const updated = allProfiles.filter(p => p.username !== currentUser.username);
-    updated.push({ ...newProfile, username: currentUser.username });
+    const updatedProfiles = allProfiles.filter(p => p.username !== currentUser.username);
+    updatedProfiles.push({ ...newProfile, username: currentUser.username });
     localStorage.setItem(WORKER_PROFILE_KEY, JSON.stringify(updatedProfiles));
     
     loadData(currentUser.username); // Refresh recommendations
@@ -274,8 +281,6 @@ export default function WorkerPanel() {
       alert("Please enter a valid price.");
       return;
     }
-
-    // UPDATED: Removed Bid Cap logic
 
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (!allJobsStr) return;
@@ -380,7 +385,6 @@ export default function WorkerPanel() {
       localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
       createNotification(allJobs[jobIndex].employerUsername, 'jobReminder', allJobs[jobIndex].id, { message: "Worker has completed the job. Please review." }, 'details');
       
-      // UPDATED: auto-close completion modal on success, remove alert
       setCompletionModal({ isOpen: false, job: null });
       loadData(currentUser.username);
       setSuccessMessage("Job marked as completed pending approval.");
@@ -415,10 +419,10 @@ export default function WorkerPanel() {
 
   const savedTabJobs = availableJobs.filter(job => savedJobs.includes(job.id));
   
-  // UPDATED: remove completed jobs from My Offers
+  // UPDATED: ensure accepted jobs appear only in In Progress, not in My Offers
   const myOffersJobs = availableJobs.filter(job => 
     job.applications?.some(app => app.workerUsername === currentUser.username) &&
-    job.status !== 'completed'
+    job.status === 'open'
   );
   
   const inProgressJobs = availableJobs.filter(job => job.status === 'processing' && job.assignedWorkerUsername === currentUser.username);
