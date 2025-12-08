@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckSquare, Upload, X, Image as ImageIcon } from 'lucide-react';
+import { CheckSquare, Upload, X, AlertCircle } from 'lucide-react';
 import { JobPost, MediaItem } from '../types';
 
 interface Props {
@@ -20,11 +20,13 @@ export default function CompletionModal({ isOpen, onClose, onSubmit, job }: Prop
   
   const [mediaUrl, setMediaUrl] = useState('');
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const toggleCheck = (key: keyof typeof checklist) => {
     setChecklist(prev => ({ ...prev, [key]: !prev[key] }));
+    setError(null); // Clear error on interaction
   };
 
   const addMedia = () => {
@@ -37,7 +39,8 @@ export default function CompletionModal({ isOpen, onClose, onSubmit, job }: Prop
 
   const handleSubmit = () => {
     if (!checklist.workCompleted) {
-      alert("Please confirm work is completed.");
+      // UPDATED: removed browser alert, using inline error instead
+      setError("Please confirm work is completed.");
       return;
     }
     onSubmit(checklist, mediaItems);
@@ -56,6 +59,12 @@ export default function CompletionModal({ isOpen, onClose, onSubmit, job }: Prop
         <p className="text-sm text-gray-500 mb-6">
           Please confirm the following items before marking the job as done.
         </p>
+
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-red-600 text-sm">
+            <AlertCircle size={16} /> {error}
+          </div>
+        )}
 
         <div className="space-y-3 mb-6">
           <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">

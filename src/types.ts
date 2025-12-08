@@ -82,6 +82,8 @@ export type JobPost = {
     after: MediaItem[];
   };
 
+  // UPDATED: Removed bidCap field if it existed previously
+
   completionChecklist?: {
     worker: {
       workCompleted: boolean;

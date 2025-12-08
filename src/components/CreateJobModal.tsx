@@ -48,6 +48,8 @@ export default function CreateJobModal({ isOpen, onClose, onSuccess, currentUser
       return;
     }
 
+    // UPDATED: removed bidCap logic if it existed
+
     const newJob: JobPost = {
       id: crypto.randomUUID(),
       employerUsername: currentUser,
@@ -142,6 +144,8 @@ export default function CreateJobModal({ isOpen, onClose, onSuccess, currentUser
                 </div>
               </div>
             </div>
+
+            {/* UPDATED: Removed Bid Cap UI section here */}
 
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">Address *</label>

@@ -252,7 +252,7 @@ export default function WorkerPanel() {
     const allProfiles: WorkerProfileData[] = allProfilesStr ? JSON.parse(allProfilesStr) : [];
     const updated = allProfiles.filter(p => p.username !== currentUser.username);
     updated.push({ ...newProfile, username: currentUser.username });
-    localStorage.setItem(WORKER_PROFILE_KEY, JSON.stringify(updated));
+    localStorage.setItem(WORKER_PROFILE_KEY, JSON.stringify(updatedProfiles));
     
     loadData(currentUser.username); // Refresh recommendations
   };
@@ -274,6 +274,8 @@ export default function WorkerPanel() {
       alert("Please enter a valid price.");
       return;
     }
+
+    // UPDATED: Removed Bid Cap logic
 
     const allJobsStr = localStorage.getItem(JOB_STORAGE_KEY);
     if (!allJobsStr) return;
@@ -377,9 +379,12 @@ export default function WorkerPanel() {
       allJobs[jobIndex].media!.after = media;
       localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
       createNotification(allJobs[jobIndex].employerUsername, 'jobReminder', allJobs[jobIndex].id, { message: "Worker has completed the job. Please review." }, 'details');
-      alert("Completion details submitted. Employer will review.");
+      
+      // UPDATED: auto-close completion modal on success, remove alert
       setCompletionModal({ isOpen: false, job: null });
       loadData(currentUser.username);
+      setSuccessMessage("Job marked as completed pending approval.");
+      setTimeout(() => setSuccessMessage(null), 3000);
     }
   };
 
@@ -409,7 +414,13 @@ export default function WorkerPanel() {
   });
 
   const savedTabJobs = availableJobs.filter(job => savedJobs.includes(job.id));
-  const myOffersJobs = availableJobs.filter(job => job.applications?.some(app => app.workerUsername === currentUser.username));
+  
+  // UPDATED: remove completed jobs from My Offers
+  const myOffersJobs = availableJobs.filter(job => 
+    job.applications?.some(app => app.workerUsername === currentUser.username) &&
+    job.status !== 'completed'
+  );
+  
   const inProgressJobs = availableJobs.filter(job => job.status === 'processing' && job.assignedWorkerUsername === currentUser.username);
   const completedJobs = availableJobs.filter(job => job.status === 'completed' && job.assignedWorkerUsername === currentUser.username);
 
@@ -690,15 +701,26 @@ export default function WorkerPanel() {
                         >
                           <AlertTriangle size={16} /> Report
                         </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCompletionModal({ isOpen: true, job });
-                          }} 
-                          className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm"
-                        >
-                          <CheckSquare size={16} /> Complete
-                        </button>
+                        
+                        {/* UPDATED: hide Complete button when completion is pending employer approval */}
+                        {job.completionChecklist?.worker?.workCompleted ? (
+                          <button 
+                            disabled
+                            className="flex-1 flex items-center justify-center gap-2 bg-gray-100 text-gray-500 py-2.5 rounded-lg font-bold text-sm cursor-not-allowed"
+                          >
+                            <ClockIcon size={16} /> Pending employer approval
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCompletionModal({ isOpen: true, job });
+                            }} 
+                            className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-bold text-sm transition-colors shadow-sm"
+                          >
+                            <CheckSquare size={16} /> Complete
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
