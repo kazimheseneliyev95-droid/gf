@@ -245,11 +245,18 @@ export default function CreateJobModal({ isOpen, onClose, onSuccess, currentUser
                   )}
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">Estimated Days *</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    {priceBasis === 'per_day' ? 'Number of Days *' : 'Estimated Duration (days) *'}
+                  </label>
                   <div className="relative">
                     <Clock className="absolute left-3 top-2.5 text-gray-400" size={16} />
                     <input type="number" placeholder="3" value={days} onChange={e => setDays(e.target.value)} className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                   </div>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    {priceBasis === 'per_day' 
+                      ? 'Used to calculate the total estimated budget.' 
+                      : 'Rough estimate so workers know how big the job is.'}
+                  </p>
                 </div>
               </div>
 

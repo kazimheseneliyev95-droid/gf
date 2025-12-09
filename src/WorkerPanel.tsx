@@ -4,19 +4,18 @@ import {
   LogOut, HardHat, MapPin, DollarSign, Send, User, 
   CheckCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, 
-  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter, Plus, X, HelpCircle, History, TrendingUp, TrendingDown, Star
+  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter, Plus, X, HelpCircle, History, TrendingUp, TrendingDown, Star, Calculator
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
   JOB_CATEGORIES, WORKER_PROFILE_KEY, WorkerProfileData, 
-  REVIEW_STORAGE_KEY, WorkerReview, SAVED_JOBS_KEY, MediaItem, USERS_STORAGE_KEY, User as UserType,
-  SavedSearch
+  REVIEW_STORAGE_KEY, WorkerReview, SAVED_JOBS_KEY, MediaItem, USERS_STORAGE_KEY, User as UserType
 } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
 import { createNotification } from './utils';
 import { getConversationByJob } from './utils/chatManager';
-import { getBadges, getRecommendedJobs, logActivity, getLowestBid, calculateProfileStrength, getSavedSearches, saveSearch, calculateTrustScore } from './utils/advancedFeatures';
+import { getBadges, getRecommendedJobs, logActivity, calculateProfileStrength, calculateTrustScore } from './utils/advancedFeatures';
 import { getDistance } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
 import { calculateMoMEarnings } from './utils/analytics';
@@ -59,9 +58,7 @@ export default function WorkerPanel() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | 'All'>('All');
   const [minBudget, setMinBudget] = useState<string>('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
-
+  
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [profileData, setProfileData] = useState<WorkerProfileData>({ username: '', skills: [], regions: [], bio: '', availabilityStatus: 'available', hiddenJobIds: [] });
   const [skillInput, setSkillInput] = useState('');
@@ -101,7 +98,6 @@ export default function WorkerPanel() {
       setCurrentUser(user);
       loadData(user.username);
       loadSavedJobs(user.username);
-      setSavedSearches(getSavedSearches(user.username));
       
       const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
       if (usersStr) {
@@ -228,27 +224,6 @@ export default function WorkerPanel() {
     const allSaved: Record<string, string[]> = str ? JSON.parse(str) : {};
     allSaved[currentUser.username] = newSaved;
     localStorage.setItem(SAVED_JOBS_KEY, JSON.stringify(allSaved));
-  };
-
-  const handleSaveSearch = () => {
-    if (!currentUser) return;
-    const name = prompt("Name this search:");
-    if (!name) return;
-    
-    const newSearch: SavedSearch = {
-      id: crypto.randomUUID(),
-      name,
-      filters: { category: selectedCategory, minBudget, searchTerm }
-    };
-    
-    saveSearch(currentUser.username, newSearch);
-    setSavedSearches([...savedSearches, newSearch]);
-  };
-
-  const applySavedSearch = (search: SavedSearch) => {
-    setSelectedCategory(search.filters.category as any);
-    setMinBudget(search.filters.minBudget);
-    setSearchTerm(search.filters.searchTerm);
   };
 
   const handleNotInterested = (jobId: string) => {
@@ -419,9 +394,16 @@ export default function WorkerPanel() {
   const availableTabJobs = availableJobs.filter(job => {
     const hasApplied = job.applications?.some(app => app.workerUsername === currentUser.username);
     const isAssigned = !!job.assignedWorkerUsername;
-    const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) || job.address.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesSearch = !searchTerm || 
+      job.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      job.address.toLowerCase().includes(searchTerm.toLowerCase());
+      
     const matchesCategory = selectedCategory === 'All' || job.category === selectedCategory;
-    const matchesBudget = !minBudget || job.budget >= Number(minBudget);
+    
+    const budgetFilter = Number(minBudget);
+    const matchesBudget = !minBudget || (!isNaN(budgetFilter) && job.budget >= budgetFilter);
+    
     return job.status === 'open' && !hasApplied && !isAssigned && matchesSearch && matchesCategory && matchesBudget;
   });
 
@@ -557,14 +539,7 @@ export default function WorkerPanel() {
                     <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
                       <Filter size={16} /> Filters
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {savedSearches.map(s => (
-                        <button key={s.id} onClick={() => applySavedSearch(s)} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300">
-                          {s.name}
-                        </button>
-                      ))}
-                      <button onClick={handleSaveSearch} className="text-xs text-blue-600 hover:underline">Save Search</button>
-                    </div>
+                    {/* Saved Search UI Removed */}
                   </div>
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3">
                     <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none" />
@@ -618,9 +593,12 @@ export default function WorkerPanel() {
                             <div className="flex items-center gap-2">
                               <DollarSign size={14} className="text-gray-400" />
                               <span className="font-semibold text-gray-900">
-                                {isPerDay ? `${dailyRate} ₼ / day` : `${job.budget} ₼`}
+                                {isPerDay ? (
+                                  <span>{dailyRate} ₼ / day <span className="text-xs text-gray-400">· {job.daysToComplete} days (≈ {job.budget} ₼ total)</span></span>
+                                ) : (
+                                  <span>{job.budget} ₼ total <span className="text-xs text-gray-400">(Est. {job.daysToComplete} days)</span></span>
+                                )}
                               </span>
-                              {isPerDay && <span className="text-xs text-gray-400">({job.daysToComplete} days)</span>}
                             </div>
                             <div className="flex items-center gap-2"><MapPin size={14} className="text-gray-400" /><span>{job.address}</span></div>
                             <div className="flex items-center gap-2"><User size={14} className="text-gray-400" /><span>{job.employerUsername}</span></div>

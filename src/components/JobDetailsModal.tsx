@@ -153,7 +153,14 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
                     )}
                   </p>
                   {isPerDay && !job.isAuction && (
-                    <p className="text-xs text-gray-500 mt-0.5">Total: {job.budget} ₼</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {dailyRate} ₼ x {job.daysToComplete} days = {job.budget} ₼ Total
+                    </p>
+                  )}
+                  {!isPerDay && !job.isAuction && (
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Total Job Cost (Est. {job.daysToComplete} days)
+                    </p>
                   )}
                   {job.isAuction && <p className="text-xs text-purple-600 flex items-center gap-1"><Gavel size={10} /> Auction Mode</p>}
                 </div>

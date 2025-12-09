@@ -4,9 +4,10 @@ import { Clock, CheckCircle, Briefcase, MessageSquare, AlertTriangle } from 'luc
 
 interface Props {
   username: string;
+  filter?: 'all' | 'jobs' | 'offers' | 'reviews';
 }
 
-export default function ActivityTimeline({ username }: Props) {
+export default function ActivityTimeline({ username, filter = 'all' }: Props) {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
 
   useEffect(() => {
@@ -18,6 +19,14 @@ export default function ActivityTimeline({ username }: Props) {
       setLogs(myLogs);
     }
   }, [username]);
+
+  const filteredLogs = logs.filter(log => {
+    if (filter === 'all') return true;
+    if (filter === 'jobs') return log.action.includes('JOB');
+    if (filter === 'offers') return log.action.includes('OFFER') || log.action.includes('BID');
+    if (filter === 'reviews') return log.action.includes('REVIEW');
+    return false;
+  });
 
   const getIcon = (action: string) => {
     if (action.includes('JOB')) return <Briefcase size={14} className="text-blue-600" />;
@@ -41,10 +50,10 @@ export default function ActivityTimeline({ username }: Props) {
         {/* Timeline Line */}
         <div className="absolute left-[19px] top-2 bottom-2 w-0.5 bg-gray-100"></div>
 
-        {logs.length === 0 ? (
-          <p className="text-sm text-gray-500 italic pl-8">No activity recorded yet.</p>
+        {filteredLogs.length === 0 ? (
+          <p className="text-sm text-gray-500 italic pl-8">No activity recorded yet for this filter.</p>
         ) : (
-          logs.slice(0, 5).map(log => (
+          filteredLogs.slice(0, 5).map(log => (
             <div key={log.id} className="relative flex items-start gap-3">
               <div className="bg-white p-1 rounded-full border border-gray-200 z-10">
                 {getIcon(log.action)}

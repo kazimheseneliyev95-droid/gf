@@ -214,25 +214,6 @@ export const getRecommendedWorkers = (jobId: string): { username: string, score:
   return scored.sort((a, b) => b.score - a.score).slice(0, 5);
 };
 
-// --- SAVED SEARCHES ---
-export const getSavedSearches = (username: string): SavedSearch[] => {
-  const all = getLocalData<{ username: string, searches: SavedSearch[] }>(SAVED_SEARCHES_KEY);
-  const userEntry = all.find(u => u.username === username);
-  return userEntry ? userEntry.searches : [];
-};
-
-export const saveSearch = (username: string, search: SavedSearch) => {
-  const all = getLocalData<{ username: string, searches: SavedSearch[] }>(SAVED_SEARCHES_KEY);
-  const userIndex = all.findIndex(u => u.username === username);
-  
-  if (userIndex !== -1) {
-    all[userIndex].searches.push(search);
-  } else {
-    all.push({ username, searches: [search] });
-  }
-  localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(all));
-};
-
 // --- HELPERS ---
 export const getEmployerProfile = (username: string): EmployerProfileData | undefined => {
   const profiles = getLocalData<EmployerProfileData>(EMPLOYER_PROFILE_KEY);

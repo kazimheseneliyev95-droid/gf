@@ -97,8 +97,9 @@ export default function HomeFeed() {
     if (!currentUser) return;
 
     if (currentUser.role === 'worker') {
-      // Filter Jobs
-      let result = jobs;
+      // Filter Jobs - Only show OPEN jobs for discovery
+      let result = jobs.filter(j => j.status === 'open');
+      
       if (searchTerm) {
         const lower = searchTerm.toLowerCase();
         result = result.filter(j => j.title.toLowerCase().includes(lower) || j.address.toLowerCase().includes(lower));
@@ -341,10 +342,13 @@ export default function HomeFeed() {
                           </span>
                         ) : (
                           <span className="font-bold text-gray-900">
-                            {isPerDay ? `${dailyRate} ₼ / day` : `${job.budget} ₼`}
+                            {isPerDay ? (
+                              <span>{dailyRate} ₼ / day <span className="text-xs text-gray-400">· {job.daysToComplete} days (≈ {job.budget} ₼ total)</span></span>
+                            ) : (
+                              <span>{job.budget} ₼ total <span className="text-xs text-gray-400">(Est. {job.daysToComplete} days)</span></span>
+                            )}
                           </span>
                         )}
-                        {isPerDay && <span className="text-xs text-gray-400">({job.daysToComplete} days)</span>}
                       </div>
                       <div className="flex items-center gap-2">
                         <MapPin size={14} className="text-gray-400" />

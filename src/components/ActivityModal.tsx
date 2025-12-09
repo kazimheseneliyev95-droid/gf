@@ -42,14 +42,7 @@ export default function ActivityModal({ isOpen, onClose, username }: Props) {
         
         <div className="p-0 overflow-y-auto flex-1">
           <div className="p-4">
-            {/* We pass the filter to ActivityTimeline (assuming we update it too, or just filter here if logic allows) 
-                For now, ActivityTimeline handles fetching. We'll leave it as is or update it if needed. 
-                Actually, let's just render it. The prompt asked to "Group events by type with optional filters".
-                Since ActivityTimeline is a separate component, ideally we'd pass the filter prop.
-                I'll assume ActivityTimeline needs a small update to accept filter, but to save space I won't rewrite it fully unless necessary.
-                Let's just wrap it.
-            */}
-            <ActivityTimeline username={username} />
+            <ActivityTimeline username={username} filter={filter} />
           </div>
         </div>
         
