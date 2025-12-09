@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, MessageSquare, Briefcase, XCircle, CheckCircle, Info } from 'lucide-react';
+import { Bell, Check, MessageSquare, Briefcase, XCircle, CheckCircle, Info, Trash2 } from 'lucide-react';
 import { Notification, NOTIFICATION_KEY, UserRole, NotificationCategory } from '../types';
 import { useNavigate } from 'react-router-dom';
 
@@ -123,8 +123,8 @@ export default function NotificationCenter({ username }: NotificationCenterProps
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-bold text-sm text-gray-800">Notifications</h3>
                 {unreadCount > 0 && (
-                  <button onClick={markAllAsRead} className="text-xs text-blue-600 hover:underline">
-                    Mark all read
+                  <button onClick={markAllAsRead} className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                    <Check size={12} /> Mark all read
                   </button>
                 )}
               </div>

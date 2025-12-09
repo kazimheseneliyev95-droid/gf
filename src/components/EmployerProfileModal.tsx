@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Briefcase, MapPin, CheckSquare, DollarSign, User, Star, Clock } from 'lucide-react';
+import { X, Save, Briefcase, MapPin, CheckSquare, DollarSign, User, Star, Clock, Info } from 'lucide-react';
 import { EmployerProfileData, JOB_CATEGORIES } from '../types';
 import { getEmployerProfile, saveEmployerProfile, calculateEmployerTrust } from '../utils/advancedFeatures';
 
@@ -22,6 +22,7 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
     jobsPerMonth: ''
   });
   const [trustScore, setTrustScore] = useState(0);
+  const [completeness, setCompleteness] = useState(0);
 
   useEffect(() => {
     if (isOpen) {
@@ -32,6 +33,15 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
       setTrustScore(calculateEmployerTrust(username));
     }
   }, [isOpen, username]);
+
+  useEffect(() => {
+    // Calculate completeness
+    let filled = 0;
+    const fields = ['companyName', 'city', 'bio', 'activeHours', 'jobsPerMonth'];
+    fields.forEach(f => { if ((profile as any)[f]) filled++; });
+    if (profile.preferredCategories && profile.preferredCategories.length > 0) filled++;
+    setCompleteness(Math.round((filled / (fields.length + 1)) * 100));
+  }, [profile]);
 
   if (!isOpen) return null;
 
@@ -62,8 +72,13 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
             <X size={20} />
           </button>
           <div className="absolute -bottom-12 left-8">
-            <div className="w-24 h-24 bg-white rounded-full border-4 border-white shadow-md flex items-center justify-center text-blue-600">
+            <div className="w-24 h-24 bg-white rounded-full border-4 border-white shadow-md flex items-center justify-center text-blue-600 relative">
               <User size={48} />
+              {!readOnly && (
+                <div className="absolute bottom-0 right-0 bg-green-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">
+                  {completeness}%
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -139,13 +154,16 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
                     <Briefcase size={14} className="text-gray-400" /> {profile.jobsPerMonth || "N/A"}
                   </p>
                 ) : (
-                  <input 
-                    type="text" 
-                    value={profile.jobsPerMonth || ''} 
-                    onChange={e => setProfile({...profile, jobsPerMonth: e.target.value})}
-                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="e.g. 5-10"
-                  />
+                  <>
+                    <input 
+                      type="text" 
+                      value={profile.jobsPerMonth || ''} 
+                      onChange={e => setProfile({...profile, jobsPerMonth: e.target.value})}
+                      className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="e.g. 5-10"
+                    />
+                    <p className="text-[10px] text-gray-400 mt-1">Optional – helps us understand your hiring volume.</p>
+                  </>
                 )}
               </div>
             </div>
@@ -155,12 +173,17 @@ export default function EmployerProfileModal({ isOpen, onClose, username, readOn
               {readOnly ? (
                 <p className="text-sm text-gray-600 italic">{profile.bio || "No bio provided."}</p>
               ) : (
-                <textarea 
-                  value={profile.bio || ''} 
-                  onChange={e => setProfile({...profile, bio: e.target.value})}
-                  className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
-                  placeholder="Tell workers about your business or hiring needs..."
-                />
+                <>
+                  <textarea 
+                    value={profile.bio || ''} 
+                    onChange={e => setProfile({...profile, bio: e.target.value})}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none h-24 resize-none"
+                    placeholder="Tell workers about your business or hiring needs..."
+                  />
+                  <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
+                    <Info size={10} /> A clear description helps workers understand your needs.
+                  </p>
+                </>
               )}
             </div>
 

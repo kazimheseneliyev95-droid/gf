@@ -4,7 +4,7 @@ import {
   LogOut, HardHat, MapPin, DollarSign, Send, User, 
   CheckCircle, Clock as ClockIcon, Briefcase, 
   PlayCircle, CheckSquare, Search, Edit2, Save, 
-  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter, Plus, X, HelpCircle, History
+  MessageSquare, Bookmark, AlertTriangle, Sparkles, Map, Gavel, Eye, Info, Home, Filter, Plus, X, HelpCircle, History, TrendingUp, TrendingDown, Star
 } from 'lucide-react';
 import { 
   JobPost, JOB_STORAGE_KEY, JobApplication, JobCategory, 
@@ -16,9 +16,10 @@ import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
 import { createNotification } from './utils';
 import { getConversationByJob } from './utils/chatManager';
-import { getBadges, getRecommendedJobs, logActivity, getLowestBid, calculateProfileStrength, getSavedSearches, saveSearch } from './utils/advancedFeatures';
+import { getBadges, getRecommendedJobs, logActivity, getLowestBid, calculateProfileStrength, getSavedSearches, saveSearch, calculateTrustScore } from './utils/advancedFeatures';
 import { getDistance } from './utils/advancedAnalytics';
 import { isFeatureEnabled } from './utils/featureFlags';
+import { calculateMoMEarnings } from './utils/analytics';
 
 import GamificationBadges from './components/GamificationBadges';
 import AvailabilityScheduler from './components/AvailabilityScheduler';
@@ -67,7 +68,7 @@ export default function WorkerPanel() {
   const [regionInput, setRegionInput] = useState('');
   const [validationErrors, setValidationErrors] = useState<{ bio?: string, skills?: string }>({});
 
-  const [stats, setStats] = useState({ completed: 0, earned: 0, rating: 0, completedThisMonth: 0 });
+  const [stats, setStats] = useState({ completed: 0, completed30d: 0, earned: 0, earnedTrend: 0, rating: 0, reviewCount: 0 });
   const [badges, setBadges] = useState<any[]>([]);
   const [recommendedJobs, setRecommendedJobs] = useState<JobPost[]>([]);
   const [profileStrengthScore, setProfileStrengthScore] = useState(0);
@@ -156,9 +157,11 @@ export default function WorkerPanel() {
       setAvailableJobs(allJobs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       
       let completed = 0;
-      let completedThisMonth = 0;
+      let completed30d = 0;
       let earned = 0;
       const now = new Date();
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(now.getDate() - 30);
       
       allJobs.forEach(job => {
         if (job.status === 'completed' && job.assignedWorkerUsername === username) {
@@ -166,14 +169,13 @@ export default function WorkerPanel() {
           const myApp = job.applications?.find(a => a.workerUsername === username && a.status === 'accepted');
           if (myApp) earned += myApp.offeredPrice;
           
-          if (job.completedAt) {
-            const completedDate = new Date(job.completedAt);
-            if (completedDate.getMonth() === now.getMonth() && completedDate.getFullYear() === now.getFullYear()) {
-              completedThisMonth++;
-            }
+          if (job.completedAt && new Date(job.completedAt) >= thirtyDaysAgo) {
+            completed30d++;
           }
         }
       });
+
+      const earnedTrend = calculateMoMEarnings(allJobs, username);
 
       const allReviewsStr = localStorage.getItem(REVIEW_STORAGE_KEY);
       let rating = 0;
@@ -187,7 +189,7 @@ export default function WorkerPanel() {
         }
       }
 
-      setStats({ completed, earned, rating, completedThisMonth });
+      setStats({ completed, completed30d, earned, earnedTrend, rating, reviewCount: myReviews.length });
       setBadges(getBadges(username, 'worker'));
       setRecommendedJobs(getRecommendedJobs(username));
     }
@@ -274,7 +276,7 @@ export default function WorkerPanel() {
     }));
   };
 
-  const handleSendOffer = (jobId: string, employerUsername: string) => {
+  const handleSendOffer = (jobId: string, employerUsername: string, priceBasis?: 'total' | 'per_day', days?: number) => {
     if (!currentUser) return;
     const inputs = applicationInputs[jobId] || { price: '', message: '', canMeetDeadline: true };
     if (!inputs.price || Number(inputs.price) <= 0) {
@@ -296,27 +298,33 @@ export default function WorkerPanel() {
       return;
     }
 
+    // Calculate total if per_day
+    let finalPrice = Number(inputs.price);
+    if (priceBasis === 'per_day' && days) {
+      finalPrice = Number(inputs.price) * days;
+    }
+
     if (!job.applications) job.applications = [];
     const existingAppIndex = job.applications.findIndex(a => a.workerUsername === currentUser.username);
     
     if (job.isAuction && showAuction && existingAppIndex !== -1) {
-      job.applications[existingAppIndex].offeredPrice = Number(inputs.price);
+      job.applications[existingAppIndex].offeredPrice = finalPrice;
       if (inputs.message) job.applications[existingAppIndex].message = inputs.message;
       job.applications[existingAppIndex].createdAt = new Date().toISOString(); 
-      logActivity(currentUser.username, 'worker', 'BID_UPDATED', { jobId, price: inputs.price });
+      logActivity(currentUser.username, 'worker', 'BID_UPDATED', { jobId, price: finalPrice });
       setSuccessMessage("Bid updated successfully!");
     } else {
       const newApplication: JobApplication = {
         id: crypto.randomUUID(),
         workerUsername: currentUser.username,
-        offeredPrice: Number(inputs.price),
+        offeredPrice: finalPrice,
         message: inputs.message,
         createdAt: new Date().toISOString(),
         status: 'pending',
         canMeetDeadline: inputs.canMeetDeadline
       };
       job.applications.push(newApplication);
-      logActivity(currentUser.username, 'worker', 'OFFER_SENT', { jobId, price: inputs.price });
+      logActivity(currentUser.username, 'worker', 'OFFER_SENT', { jobId, price: finalPrice });
       setSuccessMessage("Offer sent successfully!");
       createNotification(employerUsername, 'newOffer', jobId, { workerName: currentUser.username }, 'offers');
     }
@@ -419,7 +427,6 @@ export default function WorkerPanel() {
 
   const savedTabJobs = availableJobs.filter(job => savedJobs.includes(job.id));
   
-  // UPDATED: ensure accepted jobs appear only in In Progress, not in My Offers
   const myOffersJobs = availableJobs.filter(job => 
     job.applications?.some(app => app.workerUsername === currentUser.username) &&
     job.status === 'open'
@@ -441,7 +448,7 @@ export default function WorkerPanel() {
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* UPDATED: Responsive Header */}
+        {/* Header */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
           <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto text-center md:text-left">
             <div>
@@ -479,20 +486,37 @@ export default function WorkerPanel() {
           </div>
         </div>
 
-        {/* UPDATED: Responsive Stats Grid */}
+        {/* Stats Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
               <div className="bg-green-100 p-2.5 rounded-full text-green-600"><CheckSquare size={20} /></div>
-              <div><p className="text-xs text-gray-500 font-medium">Jobs Done</p><p className="text-xl font-bold text-gray-900">{stats.completed}</p></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Jobs Done</p>
+                <p className="text-xl font-bold text-gray-900">{stats.completed}</p>
+                {stats.completed30d > 0 && <p className="text-[10px] text-gray-400">Last 30 days: {stats.completed30d}</p>}
+              </div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
               <div className="bg-blue-100 p-2.5 rounded-full text-blue-600"><DollarSign size={20} /></div>
-              <div><p className="text-xs text-gray-500 font-medium">Earned</p><p className="text-xl font-bold text-gray-900">{stats.earned} ₼</p></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Earned</p>
+                <p className="text-xl font-bold text-gray-900">{stats.earned} ₼</p>
+                {stats.earnedTrend !== 0 && (
+                  <div className={`flex items-center gap-1 text-[10px] font-bold ${stats.earnedTrend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {stats.earnedTrend > 0 ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                    <span>{Math.abs(stats.earnedTrend).toFixed(0)}% vs last mo</span>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
               <div className="bg-amber-100 p-2.5 rounded-full text-amber-600"><Sparkles size={20} /></div>
-              <div><p className="text-xs text-gray-500 font-medium">Rating</p><p className="text-xl font-bold text-gray-900">{reviews.length > 0 ? stats.rating.toFixed(1) : '-'}</p></div>
+              <div>
+                <p className="text-xs text-gray-500 font-medium">Rating</p>
+                <p className="text-xl font-bold text-gray-900">{reviews.length > 0 ? stats.rating.toFixed(1) : '-'}</p>
+                {stats.reviewCount > 0 && <p className="text-[10px] text-gray-400">Based on {stats.reviewCount} reviews</p>}
+              </div>
             </div>
           </div>
           <div className="lg:col-span-1 space-y-4">
@@ -503,7 +527,7 @@ export default function WorkerPanel() {
         {successMessage && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-center shadow-sm">{successMessage}</div>}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* UPDATED: Scrollable Tabs */}
+          {/* Tabs */}
           <div className="flex border-b border-gray-100 overflow-x-auto">
             {[
               { id: 'available', label: 'Available', icon: Search, count: availableTabJobs.length },
@@ -560,6 +584,14 @@ export default function WorkerPanel() {
                       const inputs = applicationInputs[job.id] || { price: '', message: '', canMeetDeadline: true };
                       const isSaved = savedJobs.includes(job.id);
                       const myApp = job.applications?.find(a => a.workerUsername === currentUser.username);
+                      
+                      // Match Hint
+                      const isSkillMatch = profileData.skills.some(s => job.category.toLowerCase().includes(s.toLowerCase()));
+                      const isRegionMatch = profileData.regions?.some(r => job.address.toLowerCase().includes(r.toLowerCase()));
+                      const isMatch = isSkillMatch || isRegionMatch;
+
+                      const isPerDay = job.priceBasis === 'per_day';
+                      const dailyRate = isPerDay ? Math.round(job.budget / job.daysToComplete) : null;
 
                       return (
                         <div key={job.id} id={`job-${job.id}`} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all relative">
@@ -569,6 +601,7 @@ export default function WorkerPanel() {
                               <div className="flex flex-wrap gap-2 mt-1">
                                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
                                 {activeTab === 'recommended' && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold flex items-center gap-1"><Sparkles size={10} /> Recommended</span>}
+                                {isMatch && activeTab !== 'recommended' && <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-bold">Good Match</span>}
                                 {getStatusBadge(job, myApp)}
                               </div>
                             </div>
@@ -582,16 +615,28 @@ export default function WorkerPanel() {
                           </div>
                           
                           <div className="space-y-2 text-sm text-gray-600 mt-3">
-                            <div className="flex items-center gap-2"><DollarSign size={14} className="text-gray-400" /><span className="font-semibold text-gray-900">{job.budget} ₼</span></div>
+                            <div className="flex items-center gap-2">
+                              <DollarSign size={14} className="text-gray-400" />
+                              <span className="font-semibold text-gray-900">
+                                {isPerDay ? `${dailyRate} ₼ / day` : `${job.budget} ₼`}
+                              </span>
+                              {isPerDay && <span className="text-xs text-gray-400">({job.daysToComplete} days)</span>}
+                            </div>
                             <div className="flex items-center gap-2"><MapPin size={14} className="text-gray-400" /><span>{job.address}</span></div>
                             <div className="flex items-center gap-2"><User size={14} className="text-gray-400" /><span>{job.employerUsername}</span></div>
                           </div>
                           <div className="mt-4 pt-4 border-t border-gray-100">
                             <div className="flex gap-2 mb-2">
-                              <input type="number" placeholder="Price" value={inputs.price} onChange={(e) => handleInputChange(job.id, 'price', e.target.value)} className="w-24 px-2 py-1 border rounded text-sm" />
+                              <input 
+                                type="number" 
+                                placeholder={isPerDay ? "Rate/day" : "Price"} 
+                                value={inputs.price} 
+                                onChange={(e) => handleInputChange(job.id, 'price', e.target.value)} 
+                                className="w-24 px-2 py-1 border rounded text-sm" 
+                              />
                               <input type="text" placeholder="Message..." value={inputs.message} onChange={(e) => handleInputChange(job.id, 'message', e.target.value)} className="flex-1 px-2 py-1 border rounded text-sm" />
                             </div>
-                            <button onClick={() => handleSendOffer(job.id, job.employerUsername)} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded text-sm font-medium">Send Offer</button>
+                            <button onClick={() => handleSendOffer(job.id, job.employerUsername, job.priceBasis, job.daysToComplete)} className="w-full bg-blue-600 hover:bg-blue-700 text-white py-1.5 rounded text-sm font-medium">Send Offer</button>
                           </div>
                         </div>
                       );
@@ -625,12 +670,17 @@ export default function WorkerPanel() {
               <div className="space-y-4">
                 {myOffersJobs.map(job => {
                   const myApp = job.applications?.find(a => a.workerUsername === currentUser.username);
+                  const isPerDay = job.priceBasis === 'per_day';
+                  
                   return (
                     <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3">
                       <div className="flex justify-between items-center">
                         <div>
                           <h3 className="font-bold text-gray-900">{job.title}</h3>
-                          <p className="text-sm text-gray-500">Offered: {myApp?.offeredPrice} ₼</p>
+                          <p className="text-sm text-gray-500">
+                            Offered: {myApp?.offeredPrice} ₼ 
+                            {isPerDay && <span className="text-xs"> (Total)</span>}
+                          </p>
                         </div>
                         {getStatusBadge(job, myApp)}
                       </div>
@@ -741,27 +791,40 @@ export default function WorkerPanel() {
             )}
             {activeTab === 'completed' && (
               <div className="space-y-4">
-                {completedJobs.map(job => (
-                  <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm opacity-90 hover:opacity-100 transition-opacity">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-bold text-gray-900">{job.title}</h3>
-                      {getStatusBadge(job)}
+                {completedJobs.map(job => {
+                  const review = reviews.find(r => r.jobId === job.id);
+                  return (
+                    <div key={job.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm opacity-90 hover:opacity-100 transition-opacity">
+                      <div className="flex justify-between items-start">
+                        <h3 className="font-bold text-gray-900">{job.title}</h3>
+                        {getStatusBadge(job)}
+                      </div>
+                      <div className="mt-2 text-sm text-gray-600">
+                        <p>Completed on {new Date(job.completedAt!).toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-400 mt-1">{job.address}</p>
+                      </div>
+                      
+                      {review && (
+                        <div className="mt-3 bg-amber-50 p-3 rounded-lg border border-amber-100">
+                          <div className="flex items-center gap-1 text-amber-600 font-bold text-xs mb-1">
+                            <Star size={12} fill="currentColor" /> {review.rating.toFixed(1)} Stars
+                          </div>
+                          <p className="text-xs text-gray-700 italic">"{review.comment}"</p>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 mt-4">
+                        <button 
+                          onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
+                          className="text-red-500 text-xs font-bold hover:underline flex items-center gap-1"
+                        >
+                          <AlertTriangle size={12} /> Report Problem
+                        </button>
+                        <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-xs font-bold hover:underline ml-auto">View Details</button>
+                      </div>
                     </div>
-                    <div className="mt-2 text-sm text-gray-600">
-                      <p>Completed on {new Date(job.completedAt!).toLocaleDateString()}</p>
-                      <p className="text-xs text-gray-400 mt-1">{job.address}</p>
-                    </div>
-                    <div className="flex gap-3 mt-4">
-                      <button 
-                        onClick={() => setDisputeModal({ isOpen: true, jobId: job.id, against: job.employerUsername })}
-                        className="text-red-500 text-xs font-bold hover:underline flex items-center gap-1"
-                      >
-                        <AlertTriangle size={12} /> Report Problem
-                      </button>
-                      <button onClick={() => setViewJobModal({ isOpen: true, job })} className="text-blue-600 text-xs font-bold hover:underline ml-auto">View Details</button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -772,10 +835,23 @@ export default function WorkerPanel() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-in zoom-in-95 overflow-y-auto max-h-[90vh]">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Edit Profile</h3>
+              
+              {/* Profile Strength Indicator */}
+              <div className="mb-6">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="font-bold text-gray-700">Profile Strength</span>
+                  <span className={profileStrengthScore > 70 ? 'text-green-600' : 'text-amber-600'}>{profileStrengthScore}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className={`h-2 rounded-full ${profileStrengthScore > 70 ? 'bg-green-500' : 'bg-amber-500'}`} style={{width: `${profileStrengthScore}%`}}></div>
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Bio</label>
                   <textarea value={profileData.bio} onChange={e => setProfileData({...profileData, bio: e.target.value})} className="w-full p-2 border rounded text-sm h-24" placeholder="Tell us about yourself..." />
+                  <p className="text-[10px] text-gray-500 mt-1">Describe your experience and what kind of jobs you prefer.</p>
                   {validationErrors.bio && <p className="text-xs text-red-500">{validationErrors.bio}</p>}
                 </div>
                 <div>
@@ -785,6 +861,7 @@ export default function WorkerPanel() {
                     <button onClick={addSkill} className="bg-gray-100 p-2 rounded"><Plus size={16} /></button>
                   </div>
                   <div className="flex flex-wrap gap-1">{profileData.skills.map(s => <span key={s} className="bg-gray-100 px-2 py-1 rounded text-xs">{s}</span>)}</div>
+                  <p className="text-[10px] text-gray-500 mt-1">Add your main skills, one by one.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Regions</label>
@@ -793,6 +870,7 @@ export default function WorkerPanel() {
                     <button onClick={addRegion} className="bg-gray-100 p-2 rounded"><Plus size={16} /></button>
                   </div>
                   <div className="flex flex-wrap gap-1">{profileData.regions?.map(r => <span key={r} className="bg-gray-100 px-2 py-1 rounded text-xs">{r}</span>)}</div>
+                  <p className="text-[10px] text-gray-500 mt-1">Where you are available to work.</p>
                 </div>
               </div>
               <div className="flex gap-3 mt-6">

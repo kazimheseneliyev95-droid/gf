@@ -1,4 +1,4 @@
-import { User, JobPost, WorkerReview, JobMessage, JobApplication, JobCategory, JobStageCounts, CategoryPerformance, UserRiskMetrics, Dispute } from '../types';
+import { User, JobPost, WorkerReview, JobMessage, JobApplication, JobCategory, JobStageCounts, CategoryPerformance, UserRiskMetrics, Dispute, AdminSettings } from '../types';
 
 // --- Helpers ---
 
@@ -13,6 +13,107 @@ export const filterByDate = <T extends { createdAt: string }>(data: T[], range: 
   if (range === '90d') past.setDate(now.getDate() - 90);
   
   return data.filter(item => new Date(item.createdAt) >= past);
+};
+
+// Month-over-Month Growth Calculation
+export const calculateMoMChange = (data: { createdAt: string }[]) => {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  
+  const lastMonthDate = new Date();
+  lastMonthDate.setMonth(now.getMonth() - 1);
+  const lastMonth = lastMonthDate.getMonth();
+  const lastMonthYear = lastMonthDate.getFullYear();
+
+  const currentCount = data.filter(d => {
+    const date = new Date(d.createdAt);
+    return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+  }).length;
+
+  const lastCount = data.filter(d => {
+    const date = new Date(d.createdAt);
+    return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear;
+  }).length;
+
+  if (lastCount === 0) return currentCount > 0 ? 100 : 0;
+  return ((currentCount - lastCount) / lastCount) * 100;
+};
+
+// NEW: Month-over-Month Earnings Calculation for Workers
+export const calculateMoMEarnings = (jobs: JobPost[], workerUsername: string) => {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  
+  const lastMonthDate = new Date();
+  lastMonthDate.setMonth(now.getMonth() - 1);
+  const lastMonth = lastMonthDate.getMonth();
+  const lastMonthYear = lastMonthDate.getFullYear();
+
+  const getEarnings = (month: number, year: number) => {
+    return jobs
+      .filter(j => {
+        const date = new Date(j.completedAt || j.createdAt);
+        return j.status === 'completed' && 
+               j.assignedWorkerUsername === workerUsername &&
+               date.getMonth() === month && 
+               date.getFullYear() === year;
+      })
+      .reduce((sum, j) => {
+        const app = j.applications?.find(a => a.workerUsername === workerUsername && a.status === 'accepted');
+        return sum + (app?.offeredPrice || 0);
+      }, 0);
+  };
+
+  const currentEarnings = getEarnings(currentMonth, currentYear);
+  const lastEarnings = getEarnings(lastMonth, lastMonthYear);
+
+  if (lastEarnings === 0) return currentEarnings > 0 ? 100 : 0;
+  return ((currentEarnings - lastEarnings) / lastEarnings) * 100;
+};
+
+// Calculate Total Spend for Current Month
+export const calculateMonthlySpend = (jobs: JobPost[]) => {
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  return jobs
+    .filter(j => {
+      // Consider spend when job is completed or processing (committed)
+      const date = new Date(j.createdAt); 
+      return (j.status === 'processing' || j.status === 'completed') && 
+             date.getMonth() === currentMonth && 
+             date.getFullYear() === currentYear;
+    })
+    .reduce((total, job) => {
+      const acceptedOffer = job.applications?.find(a => a.status === 'accepted');
+      return total + (acceptedOffer?.offeredPrice || 0);
+    }, 0);
+};
+
+// Calculate On-Time Completion Rate
+export const calculateOnTimeRate = (jobs: JobPost[]) => {
+  const completedJobs = jobs.filter(j => j.status === 'completed' && j.completedAt);
+  if (completedJobs.length === 0) return 0;
+
+  const onTimeCount = completedJobs.filter(j => {
+    if (!j.desiredCompletion || j.desiredCompletion.type !== 'date') return true; // Assume on time if no deadline
+    const deadline = new Date(j.desiredCompletion.value).getTime();
+    const completed = new Date(j.completedAt!).getTime();
+    return completed <= deadline + (24 * 60 * 60 * 1000); // Buffer of 1 day
+  }).length;
+
+  return (onTimeCount / completedJobs.length) * 100;
+};
+
+// Get Average Budget for Category
+export const getCategoryAverageBudget = (category: string, allJobs: JobPost[]) => {
+  const catJobs = allJobs.filter(j => j.category === category && j.budget > 0);
+  if (catJobs.length === 0) return null;
+  const total = catJobs.reduce((sum, j) => sum + j.budget, 0);
+  return Math.round(total / catJobs.length);
 };
 
 // --- 1. Funnel Analytics ---
@@ -242,20 +343,24 @@ export const getTimeAnalytics = (jobs: JobPost[]) => {
   };
 };
 
-// --- 5. Automated Intelligence (NEW) ---
+// --- 5. Automated Intelligence ---
 
-export const generateAutomatedInsights = (jobs: JobPost[]) => {
+export const generateAutomatedInsights = (jobs: JobPost[], config?: AdminSettings['analyticsConfig']) => {
   const insights: { type: 'warning' | 'info' | 'success', message: string }[] = [];
   
+  const priceThreshold = config?.priceDeviationThreshold || 15;
+  const slowThreshold = config?.slowResponseHours || 24;
+  const conversionThreshold = config?.lowConversionThreshold || 30;
+
   // 1. Pricing Anomalies
   const pricing = getPricingAnalytics(jobs);
   pricing.forEach(p => {
-    if (p.avgDeltaPercent > 15) {
+    if (p.avgDeltaPercent > priceThreshold) {
       insights.push({ 
         type: 'warning', 
         message: `Workers are charging ~${p.avgDeltaPercent.toFixed(0)}% above budget in ${p.category}.` 
       });
-    } else if (p.avgDeltaPercent < -15) {
+    } else if (p.avgDeltaPercent < -priceThreshold) {
       insights.push({ 
         type: 'info', 
         message: `Workers are undercutting budgets in ${p.category} by ~${Math.abs(p.avgDeltaPercent).toFixed(0)}%.` 
@@ -266,17 +371,17 @@ export const generateAutomatedInsights = (jobs: JobPost[]) => {
   // 2. Slow Response Categories
   const catPerf = computeCategoryPerformance(jobs, []); // reviews not needed for time
   catPerf.forEach(c => {
-    if (c.avgFirstOfferMinutes && c.avgFirstOfferMinutes > 60 * 24) {
+    if (c.avgFirstOfferMinutes && c.avgFirstOfferMinutes > 60 * slowThreshold) {
       insights.push({
         type: 'warning',
-        message: `Slow market: Avg time to first offer in ${c.category} is >24h.`
+        message: `Slow market: Avg time to first offer in ${c.category} is >${slowThreshold}h.`
       });
     }
   });
 
   // 3. Low Conversion
   const funnel = getFunnelStats(jobs);
-  if (funnel.conversion.toOffers < 30 && funnel.posted > 5) {
+  if (funnel.conversion.toOffers < conversionThreshold && funnel.posted > 5) {
     insights.push({
       type: 'warning',
       message: `Low engagement: Only ${funnel.conversion.toOffers.toFixed(0)}% of jobs receive offers.`
@@ -294,7 +399,7 @@ export const generateAutomatedInsights = (jobs: JobPost[]) => {
   return insights;
 };
 
-// --- 6. Schema Configuration (NEW) ---
+// --- 6. Schema Configuration ---
 
 export const analyticsSchemas = {
   users: {
@@ -364,7 +469,6 @@ export const getJobsByMonth = (jobs: JobPost[]) => {
     monthsMap[sortKey].posted++;
     
     if (job.status === 'completed' && job.completedAt) {
-      // Note: Simplified logic for demo
       if (job.status === 'completed') monthsMap[sortKey].completed++;
     }
   });

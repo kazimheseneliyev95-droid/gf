@@ -39,9 +39,9 @@ export default function TrustScoreDisplay({ username, role }: Props) {
             </span>
           </div>
           <p className="text-xs text-gray-500 mb-3">
-            Higher score means a more reliable partner. Based on completed jobs, ratings, and disputes.
+            Higher score means a more reliable partner.
           </p>
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 mb-3 border-b border-gray-100 pb-2">
             {breakdown.map((item, i) => (
               <div key={i} className="text-xs flex justify-between items-center">
                 <span className="text-gray-600">{item.split(':')[0]}</span>
@@ -50,6 +50,14 @@ export default function TrustScoreDisplay({ username, role }: Props) {
                 </span>
               </div>
             ))}
+          </div>
+          <div className="text-[10px] text-gray-500">
+            <strong>How to improve:</strong>
+            <ul className="list-disc list-inside mt-1 space-y-0.5 text-gray-400">
+              <li>Complete jobs on time</li>
+              <li>Respond quickly to messages</li>
+              <li>Maintain good ratings</li>
+            </ul>
           </div>
         </div>
       )}

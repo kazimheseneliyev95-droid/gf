@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, Users, Briefcase, FileText, MessageSquare, Bell, Settings, 
@@ -18,14 +18,14 @@ import RiskMonitor from './components/RiskMonitor';
 import PlatformHealth from './components/PlatformHealth';
 import CategoryAnalytics from './components/CategoryAnalytics';
 import { updateServiceLevelsForWorkers } from './utils/advancedAnalytics';
-import { isFeatureEnabled } from './utils/featureFlags';
+import { isFeatureEnabled, ADMIN_SETTINGS_EVENT } from './utils/featureFlags';
 
 type AdminTab = 'dashboard' | 'analytics' | 'risk' | 'health' | 'categories' | 'ltv' | 'users' | 'jobs' | 'offers' | 'reviews' | 'messages' | 'notifications' | 'disputes' | 'logs' | 'advanced' | 'settings';
 
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // UPDATED: mobile sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Data States
   const [users, setUsers] = useState<User[]>([]);
@@ -38,8 +38,20 @@ export default function AdminPanel() {
   const [userSearch, setUserSearch] = useState('');
   const [jobSearch, setJobSearch] = useState('');
 
-  // Feature Flags
-  const showLTV = isFeatureEnabled('ltvAnalytics');
+  // Feature Flags Reactivity
+  const [settingsUpdateTrigger, setSettingsUpdateTrigger] = useState(0);
+
+  // Re-evaluate flags when settings update event fires
+  const showLTV = useMemo(() => isFeatureEnabled('ltvAnalytics'), [settingsUpdateTrigger]);
+
+  useEffect(() => {
+    const handleSettingsUpdate = () => {
+      setSettingsUpdateTrigger(prev => prev + 1);
+    };
+    
+    window.addEventListener(ADMIN_SETTINGS_EVENT, handleSettingsUpdate);
+    return () => window.removeEventListener(ADMIN_SETTINGS_EVENT, handleSettingsUpdate);
+  }, []);
 
   useEffect(() => {
     const currentUserStr = localStorage.getItem('currentUser');
@@ -131,7 +143,7 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-gray-100 font-sans flex flex-col md:flex-row">
       
-      {/* UPDATED: Mobile Header */}
+      {/* Mobile Header */}
       <div className="md:hidden bg-gray-900 text-white p-4 flex justify-between items-center sticky top-0 z-30 shadow-md">
         <div className="flex items-center gap-2">
           <Shield className="text-blue-500" size={20} />
@@ -142,7 +154,7 @@ export default function AdminPanel() {
         </button>
       </div>
 
-      {/* UPDATED: Mobile Sidebar Overlay */}
+      {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
           className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
@@ -150,7 +162,7 @@ export default function AdminPanel() {
         />
       )}
 
-      {/* UPDATED: Sidebar (Responsive) */}
+      {/* Sidebar (Responsive) */}
       <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-gray-900 text-gray-300 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-gray-800 flex items-center gap-3">
           <Shield className="text-blue-500" size={24} />
@@ -204,7 +216,7 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* UPDATED: Main Content (Responsive) */}
+      {/* Main Content (Responsive) */}
       <div className="flex-1 p-4 md:p-8 overflow-y-auto h-[calc(100vh-64px)] md:h-screen">
         
         {activeTab === 'dashboard' && (
@@ -249,7 +261,7 @@ export default function AdminPanel() {
         {activeTab === 'categories' && <CategoryAnalytics />}
 
         {activeTab === 'ltv' && showLTV && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-gray-900">Lifetime Value (LTV) Analytics</h2>
             <LTVDashboard />
           </div>
@@ -271,7 +283,6 @@ export default function AdminPanel() {
               </div>
             </div>
             
-            {/* UPDATED: Responsive Table Wrapper */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm whitespace-nowrap">

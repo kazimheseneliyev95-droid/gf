@@ -1,5 +1,8 @@
 import { ADMIN_SETTINGS_KEY, AdminSettings } from '../types';
 
+// Event name for real-time updates
+export const ADMIN_SETTINGS_EVENT = 'admin_settings_updated';
+
 const DEFAULT_SETTINGS: AdminSettings = {
   features: {
     workerComparisonView: false,
@@ -29,8 +32,8 @@ export const getAdminSettings = (): AdminSettings => {
 
 export const saveAdminSettings = (settings: AdminSettings) => {
   localStorage.setItem(ADMIN_SETTINGS_KEY, JSON.stringify(settings));
-  // Force a re-render or reload might be needed in a real app, 
-  // but for this demo, React state updates or page refreshes will handle it.
+  // Dispatch event so components can re-render immediately without page reload
+  window.dispatchEvent(new Event(ADMIN_SETTINGS_EVENT));
 };
 
 export const isFeatureEnabled = (feature: keyof AdminSettings['features']): boolean => {

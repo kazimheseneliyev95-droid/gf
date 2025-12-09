@@ -1,25 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, MapPin, Clock, List, Gavel, Edit2, Layout, DollarSign, X, HelpCircle, History } from 'lucide-react';
-import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY, USERS_STORAGE_KEY, User as UserType, ServiceLevel } from './types';
+import { LogOut, Briefcase, Plus, Trash2, User, ChevronDown, ChevronUp, CheckCircle, Star, PlayCircle, CheckSquare, Heart, MessageSquare, Home, AlertTriangle, MapPin, Clock, Edit2, DollarSign, X, HelpCircle, History, TrendingUp, TrendingDown, Eye } from 'lucide-react';
+import { JobPost, JOB_STORAGE_KEY, WorkerReview, REVIEW_STORAGE_KEY, FavoriteWorker, FAVORITE_WORKERS_KEY, USERS_STORAGE_KEY, User as UserType } from './types';
 import NotificationCenter from './components/NotificationCenter';
 import ChatPanel from './components/ChatPanel';
 import { createNotification, getWorkerAverageRating, getChatUnreadCount } from './utils';
 import { getConversationByJob } from './utils/chatManager';
-import { getBadges, getRecommendedWorkers, logActivity, getLowestBid, calculateWorkerQuality, calculateTrustScore } from './utils/advancedFeatures';
-import { isWorkerAvailable, getDistance } from './utils/advancedAnalytics';
-import { isFeatureEnabled } from './utils/featureFlags';
+import { getBadges, getRecommendedWorkers, logActivity, calculateWorkerQuality } from './utils/advancedFeatures';
+import { isWorkerAvailable } from './utils/advancedAnalytics';
+import { calculateMoMChange, calculateMonthlySpend, calculateOnTimeRate } from './utils/analytics';
+import { isFeatureEnabled, getAdminSettings } from './utils/featureFlags';
 
-import GamificationBadges from './components/GamificationBadges';
 import DisputeModal from './components/DisputeModal';
 import WorkerComparisonModal from './components/WorkerComparisonModal';
-import RiskAlert from './components/RiskAlert';
-import PremiumBadge from './components/PremiumBadge';
 import EditJobModal from './components/EditJobModal';
 import EmployerProfileModal from './components/EmployerProfileModal';
 import CreateJobModal from './components/CreateJobModal';
 import TrustScoreDisplay from './components/TrustScoreDisplay';
-import ServiceLevelBadge from './components/ServiceLevelBadge';
 import ActivityModal from './components/ActivityModal'; 
 import HelpModal from './components/HelpModal';
 
@@ -30,7 +27,6 @@ export default function EmployerPanel() {
   
   const [myJobs, setMyJobs] = useState<JobPost[]>([]);
   const [favorites, setFavorites] = useState<(FavoriteWorker & { rating: number, quality: number })[]>([]);
-  const [allWorkers, setAllWorkers] = useState<UserType[]>([]);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   
   const [chatSession, setChatSession] = useState<{
@@ -41,16 +37,24 @@ export default function EmployerPanel() {
   } | null>(null);
 
   const [suggestedWorkers, setSuggestedWorkers] = useState<{ username: string, score: number, matchReason: string }[]>([]);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'processing' | 'completed'>('all');
-  const [stats, setStats] = useState({ posted: 0, completed: 0, avgSpend: 0, open: 0 });
-  const [badges, setBadges] = useState<any[]>([]);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'processing' | 'completed' | 'no_offers' | 'needs_review'>('all');
+  
+  // Enhanced Stats
+  const [stats, setStats] = useState({ 
+    posted: 0, 
+    postedTrend: 0,
+    completed: 0, 
+    onTimeRate: 0,
+    monthlySpend: 0, 
+    spendTrend: 0, // Mocked for now or calc if possible
+    open: 0,
+    zeroOfferJobs: 0
+  });
 
-  const showComparison = isFeatureEnabled('workerComparisonView');
   const showAvail = isFeatureEnabled('smartAvailabilityMatching');
-  const showLoc = isFeatureEnabled('locationDistanceMatching');
-  const showPremium = isFeatureEnabled('premiumBadges');
-  const showAuction = isFeatureEnabled('auctionMode');
+  const adminSettings = getAdminSettings();
 
+  // Modals
   const [disputeModal, setDisputeModal] = useState<{isOpen: boolean, jobId: string, against: string}>({ isOpen: false, jobId: '', against: '' });
   const [comparisonModal, setComparisonModal] = useState<{isOpen: boolean, job: JobPost | null}>({ isOpen: false, job: null });
   const [editJobModal, setEditJobModal] = useState<{isOpen: boolean, job: JobPost | null}>({ isOpen: false, job: null });
@@ -80,9 +84,6 @@ export default function EmployerPanel() {
       setCurrentUser(user);
       loadMyJobs(user.username);
       loadFavorites(user.username);
-      setBadges(getBadges(user.username, 'employer'));
-      const usersStr = localStorage.getItem(USERS_STORAGE_KEY);
-      if (usersStr) setAllWorkers(JSON.parse(usersStr).filter((u: UserType) => u.role === 'worker'));
     } catch (e) {
       navigate('/');
     }
@@ -114,14 +115,24 @@ export default function EmployerPanel() {
       const filtered = allJobs.filter(j => j.employerUsername === username);
       setMyJobs(filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
       
+      // Calculate Stats
+      const postedTrend = calculateMoMChange(filtered);
       const completedJobs = filtered.filter(j => j.status === 'completed');
+      const onTimeRate = calculateOnTimeRate(filtered);
+      const monthlySpend = calculateMonthlySpend(filtered);
       const openJobs = filtered.filter(j => j.status === 'open');
-      let totalSpend = 0;
-      completedJobs.forEach(j => {
-        const acceptedApp = j.applications?.find(a => a.status === 'accepted');
-        if (acceptedApp) totalSpend += acceptedApp.offeredPrice;
+      const zeroOfferJobs = openJobs.filter(j => !j.applications || j.applications.length === 0).length;
+
+      setStats({ 
+        posted: filtered.length, 
+        postedTrend,
+        completed: completedJobs.length, 
+        onTimeRate,
+        monthlySpend, 
+        spendTrend: 0, // Simplified
+        open: openJobs.length,
+        zeroOfferJobs
       });
-      setStats({ posted: filtered.length, completed: completedJobs.length, avgSpend: completedJobs.length ? totalSpend / completedJobs.length : 0, open: openJobs.length });
     }
   };
 
@@ -274,13 +285,19 @@ export default function EmployerPanel() {
   };
 
   if (!currentUser) return null;
-  const filteredJobs = myJobs.filter(j => filterStatus === 'all' || j.status === filterStatus);
+
+  const filteredJobs = myJobs.filter(j => {
+    if (filterStatus === 'all') return true;
+    if (filterStatus === 'no_offers') return j.status === 'open' && (!j.applications || j.applications.length === 0);
+    if (filterStatus === 'needs_review') return j.status === 'completed' && !j.reviewed;
+    return j.status === filterStatus;
+  });
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* UPDATED: Responsive Header */}
+        {/* Header */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
           <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto text-center md:text-left">
             <div>
@@ -329,30 +346,43 @@ export default function EmployerPanel() {
           </div>
         )}
 
-        {/* UPDATED: Responsive Stats Grid */}
+        {/* Smart KPI Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
-            <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Briefcase size={24} /></div>
-            <div><p className="text-xs sm:text-sm text-gray-500">Jobs Posted</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.posted}</p></div>
-          </div>
-          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
-            <div className="bg-green-100 p-3 rounded-full text-green-600"><CheckSquare size={24} /></div>
-            <div><p className="text-xs sm:text-sm text-gray-500">Completed</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completed}</p></div>
-          </div>
-          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
-            <div className="bg-purple-100 p-3 rounded-full text-purple-600"><DollarSign size={24} /></div>
-            <div><p className="text-xs sm:text-sm text-gray-500">Avg Spend</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.avgSpend.toFixed(0)} ₼</p></div>
-          </div>
-          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
-            <div className="bg-amber-100 p-3 rounded-full text-amber-600"><Layout size={24} /></div>
-            <div><p className="text-xs sm:text-sm text-gray-500">Open Jobs</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.open}</p></div>
-          </div>
+          <KPICard 
+            icon={Briefcase} 
+            label="Jobs Posted" 
+            value={stats.posted} 
+            trend={stats.postedTrend} 
+            trendLabel="vs last month"
+            color="blue" 
+          />
+          <KPICard 
+            icon={CheckSquare} 
+            label="Completed" 
+            value={stats.completed} 
+            subValue={`${stats.onTimeRate.toFixed(0)}% on time`}
+            color="green" 
+          />
+          <KPICard 
+            icon={DollarSign} 
+            label="Spend (Month)" 
+            value={`${stats.monthlySpend} ₼`} 
+            color="purple" 
+          />
+          <KPICard 
+            icon={AlertTriangle} 
+            label="Open Jobs" 
+            value={stats.open} 
+            subValue={stats.zeroOfferJobs > 0 ? `${stats.zeroOfferJobs} with 0 offers` : undefined}
+            subColor="text-red-500"
+            color="amber" 
+          />
         </div>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
-          {/* Left Column: Favorites (Stacks on mobile) */}
+          {/* Left Column: Favorites */}
           <div className="lg:col-span-1 space-y-6 order-2 lg:order-1">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
@@ -386,8 +416,23 @@ export default function EmployerPanel() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <h2 className="text-lg font-bold text-gray-800">My Posted Jobs</h2>
               <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
-                {['all', 'open', 'processing', 'completed'].map(tab => (
-                  <button key={tab} onClick={() => setFilterStatus(tab as any)} className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition-colors whitespace-nowrap ${filterStatus === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>{tab}</button>
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'open', label: 'Open' },
+                  { id: 'processing', label: 'In Progress' },
+                  { id: 'completed', label: 'Completed' },
+                  { id: 'no_offers', label: 'No Offers' },
+                  { id: 'needs_review', label: 'Needs Review' }
+                ].map(tab => (
+                  <button 
+                    key={tab.id} 
+                    onClick={() => setFilterStatus(tab.id as any)} 
+                    className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition-colors whitespace-nowrap ${
+                      filterStatus === tab.id ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
               </div>
             </div>
@@ -396,12 +441,18 @@ export default function EmployerPanel() {
 
             {filteredJobs.length === 0 ? (
               <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-200 text-gray-500">
-                No jobs found in this category.
+                No jobs found matching this filter.
               </div>
             ) : (
               <div className="grid gap-4">
                 {filteredJobs.map((job) => {
                   const conversation = job.assignedWorkerUsername ? getConversationByJob(job.id, currentUser.username, 'employer') : null;
+                  const offerCount = job.applications?.length || 0;
+                  const timeSinceCreation = (new Date().getTime() - new Date(job.createdAt).getTime()) / (1000 * 60 * 60); // hours
+                  
+                  // Warning logic
+                  const showNoOffersWarning = job.status === 'open' && offerCount === 0 && timeSinceCreation > (adminSettings.analyticsConfig?.slowResponseHours || 24);
+
                   return (
                     <div key={job.id} id={`job-${job.id}`} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${job.status === 'completed' ? 'border-gray-200 opacity-90' : job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'}`}>
                       <div className="p-5">
@@ -414,8 +465,26 @@ export default function EmployerPanel() {
                               {job.status === 'completed' && <span className="bg-gray-100 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Completed</span>}
                               {job.status === 'open' && <span className="bg-green-50 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Open</span>}
                             </div>
-                            <div className="text-blue-600 font-bold text-xl mt-1">{job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}</div>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-blue-600 font-bold text-lg">{job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}</span>
+                              {/* Offers Badge */}
+                              <button 
+                                onClick={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                                className={`text-xs font-medium px-2 py-0.5 rounded-full border flex items-center gap-1 ${offerCount > 0 ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
+                              >
+                                {offerCount} Offer{offerCount !== 1 ? 's' : ''}
+                                {offerCount > 0 && <ChevronDown size={12} />}
+                              </button>
+                            </div>
+                            
+                            {/* Warnings */}
+                            {showNoOffersWarning && (
+                              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                <AlertTriangle size={12} /> No offers yet – consider adjusting budget or description.
+                              </p>
+                            )}
                           </div>
+                          
                           <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button onClick={() => setEditJobModal({ isOpen: true, job })} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18} /></button>
                             <button onClick={() => handleDeleteJob(job.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18} /></button>
@@ -424,9 +493,15 @@ export default function EmployerPanel() {
                         
                         <p className="text-sm text-gray-600 mt-2 line-clamp-2">{job.description}</p>
 
+                        {/* Last Activity */}
+                        <div className="mt-3 text-[10px] text-gray-400 flex items-center gap-1">
+                          <Clock size={10} /> Last activity: {new Date(job.createdAt).toLocaleString()} 
+                          {/* Ideally use a real lastUpdated field if available */}
+                        </div>
+
                         {/* Message Preview */}
                         {conversation && conversation.lastMessage && (
-                          <div className="mt-3 bg-purple-50/50 border border-purple-100 rounded-lg p-2 flex justify-between items-center">
+                          <div className="mt-3 bg-purple-50/50 border border-purple-100 rounded-lg p-2 flex justify-between items-center cursor-pointer hover:bg-purple-50" onClick={() => setChatSession({ isOpen: true, jobId: job.id, partnerUsername: job.assignedWorkerUsername!, jobTitle: job.title })}>
                             <div className="flex items-center gap-2 overflow-hidden">
                               <MessageSquare size={14} className="text-purple-400 flex-shrink-0" />
                               <p className="text-xs text-gray-600 truncate"><span className="font-bold text-purple-700">{conversation.lastMessage.senderUsername}:</span> {conversation.lastMessage.text}</p>
@@ -442,7 +517,7 @@ export default function EmployerPanel() {
                               else { setExpandedJobId(job.id); setSuggestedWorkers(getRecommendedWorkers(job.id)); }
                             }} className={`flex items-center gap-2 text-sm font-medium transition-colors ${job.applications.length > 0 || job.status === 'open' ? 'text-blue-600 hover:text-blue-800' : 'text-gray-400'}`}>
                               {expandedJobId === job.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              {job.applications.length > 0 ? `View ${job.applications.length} Offer${job.applications.length !== 1 ? 's' : ''}` : 'Manage & Suggestions'}
+                              {expandedJobId === job.id ? 'Hide Details' : 'Manage & Suggestions'}
                             </button>
                             
                             {(job.status === 'processing' || job.status === 'completed') && job.assignedWorkerUsername && (
@@ -591,3 +666,35 @@ export default function EmployerPanel() {
     </div>
   );
 }
+
+// --- Subcomponents ---
+
+const KPICard = ({ icon: Icon, label, value, trend, trendLabel, subValue, subColor, color }: any) => {
+  const colors: any = {
+    blue: 'bg-blue-100 text-blue-600',
+    green: 'bg-green-100 text-green-600',
+    purple: 'bg-purple-100 text-purple-600',
+    amber: 'bg-amber-100 text-amber-600'
+  };
+
+  return (
+    <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
+      <div className={`${colors[color]} p-3 rounded-full`}><Icon size={24} /></div>
+      <div>
+        <p className="text-xs sm:text-sm text-gray-500">{label}</p>
+        <p className="text-xl sm:text-2xl font-bold text-gray-900">{value}</p>
+        
+        {trend !== undefined && trend !== 0 && (
+          <div className={`flex items-center gap-1 text-xs font-bold mt-1 ${trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {trend > 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+            <span>{Math.abs(trend).toFixed(0)}% {trendLabel}</span>
+          </div>
+        )}
+        
+        {subValue && (
+          <p className={`text-xs mt-1 font-medium ${subColor || 'text-gray-500'}`}>{subValue}</p>
+        )}
+      </div>
+    </div>
+  );
+};

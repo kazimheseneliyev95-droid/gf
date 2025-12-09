@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send, ShieldCheck } from 'lucide-react';
+import { X, MapPin, Calendar, DollarSign, Clock, CheckCircle, User, Briefcase, Image as ImageIcon, Gavel, AlertTriangle, Send, ShieldCheck, Calculator } from 'lucide-react';
 import { JobPost, JobApplication, JOB_STORAGE_KEY, EmployerProfileData } from '../types';
 import { createNotification } from '../utils';
 import { logActivity, getEmployerProfile, calculateEmployerTrust } from '../utils/advancedFeatures';
@@ -49,10 +49,16 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
         const jobIndex = allJobs.findIndex(j => j.id === job.id);
         
         if (jobIndex !== -1) {
+          // Calculate total if per_day
+          let finalPrice = Number(offerPrice);
+          if (job.priceBasis === 'per_day') {
+            finalPrice = Number(offerPrice) * job.daysToComplete;
+          }
+
           const newApp: JobApplication = {
             id: crypto.randomUUID(),
             workerUsername: currentWorkerUsername,
-            offeredPrice: Number(offerPrice),
+            offeredPrice: finalPrice,
             message: offerMessage,
             createdAt: new Date().toISOString(),
             status: 'pending',
@@ -64,7 +70,7 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
           
           localStorage.setItem(JOB_STORAGE_KEY, JSON.stringify(allJobs));
           
-          logActivity(currentWorkerUsername, 'worker', 'OFFER_SENT', { jobId: job.id, price: offerPrice, source: 'JobDetailsModal' });
+          logActivity(currentWorkerUsername, 'worker', 'OFFER_SENT', { jobId: job.id, price: finalPrice, source: 'JobDetailsModal' });
           createNotification(job.employerUsername, 'newOffer', job.id, { workerName: currentWorkerUsername }, 'offers');
           
           setSuccessMsg("Offer sent successfully!");
@@ -75,6 +81,9 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
       setIsSubmitting(false);
     }, 800);
   };
+
+  const isPerDay = job.priceBasis === 'per_day';
+  const dailyRate = isPerDay ? Math.round(job.budget / job.daysToComplete) : null;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
@@ -135,10 +144,17 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-blue-50 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
                 <div>
-                  <p className="text-xs font-bold text-gray-500 uppercase">Budget / Price</p>
-                  <p className="font-bold text-gray-900 text-lg">
-                    {job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}
+                  <p className="text-xs font-bold text-gray-500 uppercase">
+                    {isPerDay ? 'Pricing (Per Day)' : 'Budget / Price'}
                   </p>
+                  <p className="font-bold text-gray-900 text-lg">
+                    {job.isAuction ? 'Open Bidding' : (
+                      isPerDay ? `${dailyRate} ₼ / day` : `${job.budget} ₼`
+                    )}
+                  </p>
+                  {isPerDay && !job.isAuction && (
+                    <p className="text-xs text-gray-500 mt-0.5">Total: {job.budget} ₼</p>
+                  )}
                   {job.isAuction && <p className="text-xs text-purple-600 flex items-center gap-1"><Gavel size={10} /> Auction Mode</p>}
                 </div>
               </div>
@@ -239,7 +255,12 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
                   <div className="flex justify-between items-center">
                     <div>
                       <p className="text-2xl font-bold text-gray-900">{myApplication?.offeredPrice} ₼</p>
-                      <p className="text-xs text-gray-500">Sent on {myApplication && new Date(myApplication.createdAt).toLocaleString()}</p>
+                      {isPerDay && (
+                        <p className="text-xs text-gray-500">
+                          (Approx. {Math.round(myApplication!.offeredPrice / job.daysToComplete)} ₼ / day)
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">Sent on {myApplication && new Date(myApplication.createdAt).toLocaleString()}</p>
                     </div>
                     <div className={`px-3 py-1 rounded-full text-sm font-bold uppercase ${
                       myApplication?.status === 'accepted' ? 'bg-green-200 text-green-800' : 
@@ -267,7 +288,9 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1">Your Price (₼)</label>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      {isPerDay ? 'Your Daily Rate (₼)' : 'Your Total Price (₼)'}
+                    </label>
                     <div className="relative">
                       <DollarSign className="absolute left-3 top-2.5 text-gray-400" size={14} />
                       <input 
@@ -278,6 +301,11 @@ export default function JobDetailsModal({ isOpen, onClose, job, currentWorkerUse
                         placeholder="0.00"
                       />
                     </div>
+                    {isPerDay && offerPrice && (
+                      <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
+                        <Calculator size={10} /> Total: {Number(offerPrice) * job.daysToComplete} ₼
+                      </p>
+                    )}
                   </div>
                   {job.desiredCompletion && (
                     <div className="flex items-end pb-2">

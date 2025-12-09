@@ -15,6 +15,7 @@ import {
   getRevenueMetrics, getJobsByStatus, getRevenueByCategory,
   generateAutomatedInsights, analyticsSchemas
 } from '../utils/analytics';
+import { getAdminSettings } from '../utils/featureFlags';
 import JobDetailsModal from './JobDetailsModal';
 
 interface AdminAnalyticsProps {
@@ -62,8 +63,8 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
   const revenueByCat = useMemo(() => getRevenueByCategory(filteredJobs), [filteredJobs]);
   
   // --- Automated Insights ---
-  // NEW: rule-based automated insights using existing analytics data
-  const automatedInsights = useMemo(() => generateAutomatedInsights(filteredJobs), [filteredJobs]);
+  const settings = getAdminSettings();
+  const automatedInsights = useMemo(() => generateAutomatedInsights(filteredJobs, settings.analyticsConfig), [filteredJobs, settings]);
 
   // --- Charts Data ---
   const jobsOverTime = useMemo(() => getJobsByMonth(filteredJobs), [filteredJobs]);
@@ -75,7 +76,6 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
     setCurrentPage(1); // Reset to first page on sort
   };
 
-  // UPDATED: enhanced Job Explorer with sorting, pagination, and drill-down
   const sortedJobsList = useMemo(() => {
     return [...filteredJobs].sort((a, b) => {
       let valA: any, valB: any;
@@ -438,7 +438,48 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
             </div>
           </div>
 
-          {/* 3. Data Schema & Models (Dynamic) */}
+          {/* 3. Pricing Intelligence (NEW) */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                <DollarSign size={18} className="text-green-600" /> Pricing Intelligence
+              </h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold">
+                  <tr>
+                    <th className="px-6 py-3">Category</th>
+                    <th className="px-6 py-3">Avg Budget</th>
+                    <th className="px-6 py-3">Avg Final Price</th>
+                    <th className="px-6 py-3">Delta %</th>
+                    <th className="px-6 py-3">Sample Size</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {pricing.map(p => (
+                    <tr key={p.category} className="hover:bg-gray-50">
+                      <td className="px-6 py-3 font-medium text-gray-900">{p.category}</td>
+                      <td className="px-6 py-3 text-gray-600">{p.avgBudget.toFixed(0)} ₼</td>
+                      <td className="px-6 py-3 font-bold text-gray-900">{p.avgAccepted.toFixed(0)} ₼</td>
+                      <td className="px-6 py-3">
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          p.avgDeltaPercent > 10 ? 'bg-red-100 text-red-700' :
+                          p.avgDeltaPercent < -10 ? 'bg-green-100 text-green-700' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {p.avgDeltaPercent > 0 ? '+' : ''}{p.avgDeltaPercent.toFixed(1)}%
+                        </span>
+                      </td>
+                      <td className="px-6 py-3 text-gray-400 text-xs">{p.jobCount} jobs</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 4. Data Schema & Models (Dynamic) */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button 
               onClick={() => setShowSchema(!showSchema)}
@@ -451,7 +492,6 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
             </button>
             
             {showSchema && (
-              // UPDATED: Data Schema & Models now renders dynamically from analyticsSchemas config
               <div className="p-6 bg-white grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-in slide-in-from-top-2">
                 {Object.entries(analyticsSchemas).map(([key, schema]) => {
                   // Calculate dynamic counts based on props

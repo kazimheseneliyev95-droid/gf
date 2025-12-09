@@ -69,6 +69,9 @@ export type JobPost = {
 
   isAuction?: boolean;
   auctionMode?: 'open' | 'none';
+  
+  // NEW: Pricing Basis
+  priceBasis?: 'total' | 'per_day';
 
   desiredCompletion?: {
     type: 'date' | 'relative' | 'none';
@@ -81,8 +84,6 @@ export type JobPost = {
     before: MediaItem[];
     after: MediaItem[];
   };
-
-  // UPDATED: Removed bidCap field if it existed previously
 
   completionChecklist?: {
     worker: {
@@ -171,6 +172,7 @@ export type NotificationType =
   | "newMessage"
   | "jobReminder"
   | "jobUpdated"
+  | "invitation" // NEW
   | "system";
 
 export type NotificationSection = "offers" | "chat" | "details" | "system";
@@ -268,7 +270,13 @@ export interface AdminSettings {
     behaviorMonitoring: boolean;
     ltvAnalytics: boolean;
     auctionMode: boolean; 
-  }
+  };
+  analyticsConfig?: {
+    priceDeviationThreshold: number; // %
+    slowResponseHours: number; // hours
+    lowConversionThreshold: number; // %
+    enableExperimentalCharts: boolean;
+  };
 }
 
 export type SavedSearch = {
