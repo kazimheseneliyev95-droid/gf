@@ -141,7 +141,7 @@ export default function HomeFeed() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-             <div className="text-sm text-gray-500">
+             <div className="text-sm text-gray-500 hidden sm:block">
                Logged in as <span className="font-bold text-gray-900">{currentUser.username}</span>
              </div>
           </div>
@@ -151,14 +151,14 @@ export default function HomeFeed() {
       <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
         {/* MAIN CONTENT AREA */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-6 order-2 lg:order-1">
           
-          {/* Filters */}
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
+          {/* UPDATED: Responsive Filters */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-4 items-stretch md:items-center">
             <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
               <Filter size={16} /> Filters:
             </div>
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
               <input 
                 type="text" 
@@ -171,7 +171,7 @@ export default function HomeFeed() {
             <select 
               value={selectedCategory}
               onChange={e => setSelectedCategory(e.target.value as any)}
-              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-auto"
             >
               <option value="All">All Categories</option>
               {JOB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -182,7 +182,7 @@ export default function HomeFeed() {
                 placeholder="Min Budget" 
                 value={minBudget}
                 onChange={e => setMinBudget(e.target.value)}
-                className="w-32 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-32"
               />
             )}
           </div>
@@ -322,7 +322,7 @@ export default function HomeFeed() {
         </div>
 
         {/* SIDEBAR */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-6 order-1 lg:order-2">
           {isWorker ? (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">

@@ -280,80 +280,80 @@ export default function EmployerPanel() {
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
-          <div className="flex items-center gap-4">
+        {/* UPDATED: Responsive Header */}
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto text-center md:text-left">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center md:justify-start gap-2">
                 <Briefcase className="text-blue-600" /> Employer Panel
               </h1>
-              <div className="flex items-center gap-2 mt-1 text-sm">
+              <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 mt-1 text-sm">
                 <p className="text-gray-500">Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span></p>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <Link to="/home" className="text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1"><Home size={14} /> Home</Link>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <Link to="/inbox" className="text-gray-600 hover:text-purple-600 font-medium flex items-center gap-1"><MessageSquare size={14} /> Messages</Link>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <button onClick={() => setProfileModalOpen(true)} className="text-blue-600 hover:underline font-medium">Profile</button>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <TrustScoreDisplay username={currentUser.username} role="employer" />
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap justify-center items-center gap-3 w-full md:w-auto">
             <button onClick={() => setActivityModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600" title="Recent Activity">
               <History size={20} />
             </button>
             <button onClick={() => setHelpModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600"><HelpCircle size={20} /></button>
             <button onClick={() => setCreateJobModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg transition-colors shadow-sm">
-              <Plus size={18} /> Post Job
+              <Plus size={18} /> <span className="hidden sm:inline">Post Job</span>
             </button>
             <NotificationCenter username={currentUser.username} />
-            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg"><LogOut size={16} /> Logout</button>
+            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg"><LogOut size={16} /> <span className="hidden sm:inline">Logout</span></button>
           </div>
         </div>
 
         {/* First Job Banner */}
         {stats.posted === 0 && (
-          <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-md flex justify-between items-center animate-in fade-in slide-in-from-top-4">
+          <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-6 text-white shadow-md flex flex-col sm:flex-row justify-between items-center gap-4 animate-in fade-in slide-in-from-top-4 text-center sm:text-left">
             <div>
               <h2 className="text-xl font-bold mb-1">Ready to hire?</h2>
               <p className="text-blue-100 text-sm">Post your first job to start receiving offers from top-rated workers.</p>
             </div>
             <button 
               onClick={() => setCreateJobModalOpen(true)}
-              className="bg-white text-blue-600 px-6 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors"
+              className="bg-white text-blue-600 px-6 py-2 rounded-lg font-bold hover:bg-blue-50 transition-colors w-full sm:w-auto"
             >
               Post Now
             </button>
           </div>
         )}
 
-        {/* Stats */}
+        {/* UPDATED: Responsive Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
             <div className="bg-blue-100 p-3 rounded-full text-blue-600"><Briefcase size={24} /></div>
-            <div><p className="text-sm text-gray-500">Jobs Posted</p><p className="text-2xl font-bold text-gray-900">{stats.posted}</p></div>
+            <div><p className="text-xs sm:text-sm text-gray-500">Jobs Posted</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.posted}</p></div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
             <div className="bg-green-100 p-3 rounded-full text-green-600"><CheckSquare size={24} /></div>
-            <div><p className="text-sm text-gray-500">Completed</p><p className="text-2xl font-bold text-gray-900">{stats.completed}</p></div>
+            <div><p className="text-xs sm:text-sm text-gray-500">Completed</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.completed}</p></div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
             <div className="bg-purple-100 p-3 rounded-full text-purple-600"><DollarSign size={24} /></div>
-            <div><p className="text-sm text-gray-500">Avg Spend</p><p className="text-2xl font-bold text-gray-900">{stats.avgSpend.toFixed(0)} ₼</p></div>
+            <div><p className="text-xs sm:text-sm text-gray-500">Avg Spend</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.avgSpend.toFixed(0)} ₼</p></div>
           </div>
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
             <div className="bg-amber-100 p-3 rounded-full text-amber-600"><Layout size={24} /></div>
-            <div><p className="text-sm text-gray-500">Open Jobs</p><p className="text-2xl font-bold text-gray-900">{stats.open}</p></div>
+            <div><p className="text-xs sm:text-sm text-gray-500">Open Jobs</p><p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.open}</p></div>
           </div>
         </div>
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
-          {/* Left Column: Favorites */}
-          <div className="lg:col-span-1 space-y-6">
+          {/* Left Column: Favorites (Stacks on mobile) */}
+          <div className="lg:col-span-1 space-y-6 order-2 lg:order-1">
             <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 <Heart className="text-red-500" size={20} fill="currentColor" /> Favorites
@@ -382,12 +382,12 @@ export default function EmployerPanel() {
           </div>
 
           {/* Right Column: Jobs */}
-          <div className="lg:col-span-3 space-y-4">
-            <div className="flex justify-between items-center">
+          <div className="lg:col-span-3 space-y-4 order-1 lg:order-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <h2 className="text-lg font-bold text-gray-800">My Posted Jobs</h2>
-              <div className="flex gap-2">
+              <div className="flex gap-2 overflow-x-auto w-full sm:w-auto pb-2 sm:pb-0">
                 {['all', 'open', 'processing', 'completed'].map(tab => (
-                  <button key={tab} onClick={() => setFilterStatus(tab as any)} className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition-colors ${filterStatus === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>{tab}</button>
+                  <button key={tab} onClick={() => setFilterStatus(tab as any)} className={`px-3 py-1 text-xs font-medium rounded-full capitalize transition-colors whitespace-nowrap ${filterStatus === tab ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 border border-gray-200'}`}>{tab}</button>
                 ))}
               </div>
             </div>
@@ -405,9 +405,9 @@ export default function EmployerPanel() {
                   return (
                     <div key={job.id} id={`job-${job.id}`} className={`bg-white rounded-xl shadow-sm border overflow-hidden transition-all ${job.status === 'completed' ? 'border-gray-200 opacity-90' : job.status === 'processing' ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'}`}>
                       <div className="p-5">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                          <div className="w-full">
+                            <div className="flex flex-wrap items-center gap-2">
                               <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
                               <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
                               {job.status === 'processing' && <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">In Progress</span>}
@@ -416,7 +416,7 @@ export default function EmployerPanel() {
                             </div>
                             <div className="text-blue-600 font-bold text-xl mt-1">{job.isAuction ? 'Open Bidding' : `${job.budget} ₼`}</div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button onClick={() => setEditJobModal({ isOpen: true, job })} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={18} /></button>
                             <button onClick={() => handleDeleteJob(job.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={18} /></button>
                           </div>
@@ -435,8 +435,8 @@ export default function EmployerPanel() {
                           </div>
                         )}
 
-                        <div className="mt-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 w-full sm:w-auto">
                             <button onClick={() => {
                               if (expandedJobId === job.id) setExpandedJobId(null);
                               else { setExpandedJobId(job.id); setSuggestedWorkers(getRecommendedWorkers(job.id)); }
@@ -453,7 +453,7 @@ export default function EmployerPanel() {
                             )}
                           </div>
                           {job.status === 'processing' && job.assignedWorkerUsername && (
-                            <button onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)} className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center gap-1">
+                            <button onClick={() => handleCompleteJob(job.id, job.assignedWorkerUsername!)} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-3 py-2 rounded-lg flex items-center justify-center gap-1">
                               <CheckSquare size={14} /> {job.completionChecklist?.worker?.workCompleted ? 'Review Completion' : 'Mark as Completed'}
                             </button>
                           )}
@@ -532,7 +532,7 @@ export default function EmployerPanel() {
         {/* Modals */}
         {checklistReviewJob && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 animate-in zoom-in-95">
+             <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 animate-in zoom-in-95 overflow-y-auto max-h-[90vh]">
               <h3 className="text-xl font-bold text-gray-900 mb-4">Review Completion</h3>
               <div className="bg-gray-50 p-4 rounded-lg space-y-2 mb-4 border border-gray-100">
                 {Object.entries(checklistReviewJob.completionChecklist?.worker || {}).map(([key, val]) => (

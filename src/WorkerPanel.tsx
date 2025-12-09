@@ -441,24 +441,24 @@ export default function WorkerPanel() {
     <div className="min-h-screen bg-gray-100 p-4 font-sans">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
-          <div className="flex items-center gap-4">
+        {/* UPDATED: Responsive Header */}
+        <div className="bg-white rounded-xl shadow-sm p-4 sm:p-6 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 border-b border-gray-100">
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto text-center md:text-left">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center justify-center md:justify-start gap-2">
                 <HardHat className="text-blue-600" /> Worker Panel
               </h1>
-              <div className="flex items-center gap-3 mt-1 text-sm">
+              <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 mt-1 text-sm">
                 <p className="text-gray-500">Welcome, <span className="font-semibold text-blue-600">{currentUser.username}</span></p>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <Link to="/home" className="text-gray-600 hover:text-blue-600 font-medium flex items-center gap-1"><Home size={14} /> Home</Link>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <Link to="/inbox" className="text-gray-600 hover:text-purple-600 font-medium flex items-center gap-1"><MessageSquare size={14} /> Messages</Link>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 <button onClick={() => setIsEditingProfile(true)} className={`font-medium hover:underline ${profileStrengthScore > 70 ? 'text-green-600' : 'text-yellow-600'}`}>
                   Profile ({profileStrengthScore}%)
                 </button>
-                <span className="text-gray-300">|</span>
+                <span className="text-gray-300 hidden sm:inline">|</span>
                 {profileData.availabilityStatus === 'available' ? (
                    <span className="text-green-700 text-xs font-bold bg-green-50 px-2 py-0.5 rounded-full border border-green-100">Available</span>
                 ) : (
@@ -468,17 +468,18 @@ export default function WorkerPanel() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap justify-center items-center gap-3 w-full md:w-auto">
             <button onClick={() => setActivityModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600" title="Recent Activity">
               <History size={20} />
             </button>
             <button onClick={() => setHelpModalOpen(true)} className="p-2 text-gray-400 hover:text-blue-600"><HelpCircle size={20} /></button>
             <NotificationCenter username={currentUser.username} />
             <button onClick={() => setIsEditingProfile(true)} className="p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-full"><Edit2 size={20} /></button>
-            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg"><LogOut size={16} /> Logout</button>
+            <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg"><LogOut size={16} /> <span className="hidden sm:inline">Logout</span></button>
           </div>
         </div>
 
+        {/* UPDATED: Responsive Stats Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
@@ -502,6 +503,7 @@ export default function WorkerPanel() {
         {successMessage && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-center shadow-sm">{successMessage}</div>}
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* UPDATED: Scrollable Tabs */}
           <div className="flex border-b border-gray-100 overflow-x-auto">
             {[
               { id: 'available', label: 'Available', icon: Search, count: availableTabJobs.length },
@@ -514,7 +516,7 @@ export default function WorkerPanel() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as Tab)}
-                className={`flex-1 min-w-[100px] py-4 text-sm font-medium flex items-center justify-center gap-2 relative ${activeTab === tab.id ? 'text-blue-600 bg-blue-50/30' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`flex-1 min-w-[120px] py-4 text-sm font-medium flex items-center justify-center gap-2 relative whitespace-nowrap ${activeTab === tab.id ? 'text-blue-600 bg-blue-50/30' : 'text-gray-500 hover:bg-gray-50'}`}
               >
                 <tab.icon size={16} /> {tab.label}
                 {tab.count > 0 && <span className={`ml-1 text-xs px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{tab.count}</span>}
@@ -523,7 +525,7 @@ export default function WorkerPanel() {
             ))}
           </div>
 
-          <div className="p-6 bg-gray-50/50 min-h-[400px]">
+          <div className="p-4 sm:p-6 bg-gray-50/50 min-h-[400px]">
             {(activeTab === 'available' || activeTab === 'recommended') && (
               <div className="space-y-4">
                 <div className="bg-white p-4 rounded-lg border border-gray-200 flex flex-col gap-3 shadow-sm">
@@ -531,7 +533,7 @@ export default function WorkerPanel() {
                     <div className="flex items-center gap-2 text-gray-500 text-sm font-medium">
                       <Filter size={16} /> Filters
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       {savedSearches.map(s => (
                         <button key={s.id} onClick={() => applySavedSearch(s)} className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded border border-gray-300">
                           {s.name}
@@ -540,13 +542,13 @@ export default function WorkerPanel() {
                       <button onClick={handleSaveSearch} className="text-xs text-blue-600 hover:underline">Save Search</button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-3">
-                    <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none" />
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+                    <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none" />
                     <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value as any)} className="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none">
                       <option value="All">All Categories</option>
                       {JOB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <input type="number" placeholder="Min Budget" value={minBudget} onChange={(e) => setMinBudget(e.target.value)} className="w-28 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none" />
+                    <input type="number" placeholder="Min Budget" value={minBudget} onChange={(e) => setMinBudget(e.target.value)} className="w-full sm:w-28 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-md text-sm outline-none" />
                   </div>
                 </div>
 
@@ -564,7 +566,7 @@ export default function WorkerPanel() {
                           <div className="flex justify-between items-start mb-2">
                             <div>
                               <h3 className="font-bold text-gray-900">{job.title}</h3>
-                              <div className="flex gap-2 mt-1">
+                              <div className="flex flex-wrap gap-2 mt-1">
                                 <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{job.category}</span>
                                 {activeTab === 'recommended' && <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold flex items-center gap-1"><Sparkles size={10} /> Recommended</span>}
                                 {getStatusBadge(job, myApp)}
@@ -653,7 +655,7 @@ export default function WorkerPanel() {
                       className="bg-white rounded-xl border border-blue-200 shadow-sm p-5 hover:shadow-md transition-all cursor-pointer relative group"
                     >
                       {/* Header */}
-                      <div className="flex justify-between items-start mb-3">
+                      <div className="flex flex-col sm:flex-row justify-between items-start mb-3 gap-2">
                         <div>
                           <h3 className="font-bold text-gray-900 text-lg">{job.title}</h3>
                           <div className="flex gap-2 mt-1">
@@ -664,7 +666,7 @@ export default function WorkerPanel() {
                       </div>
 
                       {/* Details Grid */}
-                      <div className="grid grid-cols-2 gap-y-2 text-sm text-gray-600 mb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 text-sm text-gray-600 mb-4">
                         <div className="flex items-center gap-2">
                           <DollarSign size={14} className="text-gray-400" />
                           <span className="font-bold text-gray-900">
@@ -686,7 +688,7 @@ export default function WorkerPanel() {
                       </div>
 
                       {/* Actions */}
-                      <div className="flex gap-3 pt-2 border-t border-gray-100 mt-2">
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2 border-t border-gray-100 mt-2">
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();

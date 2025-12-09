@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   LogOut, Users, Briefcase, FileText, MessageSquare, Bell, Settings, 
   Shield, Search, Trash2, CheckCircle, XCircle, Lock, Unlock, BarChart2,
-  AlertTriangle, Activity, TrendingUp, Sliders, ShieldAlert, Layers
+  AlertTriangle, Activity, TrendingUp, Sliders, ShieldAlert, Layers, Menu, X
 } from 'lucide-react';
 import { 
   User, JobPost, WorkerReview, JobMessage, Notification,
@@ -25,6 +25,7 @@ type AdminTab = 'dashboard' | 'analytics' | 'risk' | 'health' | 'categories' | '
 export default function AdminPanel() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // UPDATED: mobile sidebar state
   
   // Data States
   const [users, setUsers] = useState<User[]>([]);
@@ -122,11 +123,35 @@ export default function AdminPanel() {
   const filteredUsers = users.filter(u => u.username.toLowerCase().includes(userSearch.toLowerCase()));
   const filteredJobs = jobs.filter(j => j.title.toLowerCase().includes(jobSearch.toLowerCase()) || j.employerUsername.toLowerCase().includes(jobSearch.toLowerCase()));
 
+  const handleTabChange = (tab: AdminTab) => {
+    setActiveTab(tab);
+    setIsSidebarOpen(false); // Close sidebar on mobile when tab changes
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 font-sans flex">
+    <div className="min-h-screen bg-gray-100 font-sans flex flex-col md:flex-row">
       
-      {/* Sidebar */}
-      <div className="w-64 bg-gray-900 text-gray-300 flex flex-col fixed h-full z-10">
+      {/* UPDATED: Mobile Header */}
+      <div className="md:hidden bg-gray-900 text-white p-4 flex justify-between items-center sticky top-0 z-30 shadow-md">
+        <div className="flex items-center gap-2">
+          <Shield className="text-blue-500" size={20} />
+          <span className="font-bold text-lg">Admin Panel</span>
+        </div>
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-1">
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
+      {/* UPDATED: Mobile Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
+      {/* UPDATED: Sidebar (Responsive) */}
+      <div className={`fixed inset-y-0 left-0 z-40 w-64 bg-gray-900 text-gray-300 flex flex-col transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:h-screen ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-gray-800 flex items-center gap-3">
           <Shield className="text-blue-500" size={24} />
           <div>
@@ -156,7 +181,7 @@ export default function AdminPanel() {
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id as AdminTab)}
+              onClick={() => handleTabChange(item.id as AdminTab)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === item.id 
                   ? 'bg-blue-600 text-white' 
@@ -179,13 +204,13 @@ export default function AdminPanel() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="ml-64 flex-1 p-8 overflow-y-auto h-screen">
+      {/* UPDATED: Main Content (Responsive) */}
+      <div className="flex-1 p-4 md:p-8 overflow-y-auto h-[calc(100vh-64px)] md:h-screen">
         
         {activeTab === 'dashboard' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <p className="text-sm text-gray-500 font-medium">Total Users</p>
                 <p className="text-3xl font-bold text-gray-900 mt-2">{stats.totalUsers}</p>
@@ -232,112 +257,115 @@ export default function AdminPanel() {
 
         {activeTab === 'users' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <h2 className="text-2xl font-bold text-gray-900">User Management</h2>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                 <input 
                   type="text" 
                   placeholder="Search users..." 
                   value={userSearch}
                   onChange={e => setUserSearch(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64"
+                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
                 />
               </div>
             </div>
             
+            {/* UPDATED: Responsive Table Wrapper */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold">Username</th>
-                    <th className="px-6 py-4 font-semibold">Role</th>
-                    <th className="px-6 py-4 font-semibold">Level</th>
-                    <th className="px-6 py-4 font-semibold">Status</th>
-                    <th className="px-6 py-4 font-semibold text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredUsers.map(user => (
-                    <tr key={user.username} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
-                          user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                          user.role === 'employer' ? 'bg-blue-100 text-blue-700' :
-                          'bg-amber-100 text-amber-700'
-                        }`}>
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {user.role === 'worker' && user.serviceLevel && user.serviceLevel !== 'basic' && (
-                          <span className={`px-2 py-1 rounded border text-xs font-bold uppercase ${
-                            user.serviceLevel === 'elite' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
-                          }`}>
-                            {user.serviceLevel}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        {user.isActive !== false ? (
-                          <span className="flex items-center gap-1 text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full w-fit">
-                            <CheckCircle size={12} /> Active
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-red-600 text-xs font-bold bg-red-50 px-2 py-1 rounded-full w-fit">
-                            <XCircle size={12} /> Inactive
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {user.role !== 'admin' && (
-                          <button 
-                            onClick={() => toggleUserStatus(user.username)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              user.isActive !== false 
-                                ? 'bg-red-50 text-red-600 hover:bg-red-100' 
-                                : 'bg-green-50 text-green-600 hover:bg-green-100'
-                            }`}
-                            title={user.isActive !== false ? "Deactivate User" : "Activate User"}
-                          >
-                            {user.isActive !== false ? <Lock size={16} /> : <Unlock size={16} />}
-                          </button>
-                        )}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">Username</th>
+                      <th className="px-6 py-4 font-semibold">Role</th>
+                      <th className="px-6 py-4 font-semibold">Level</th>
+                      <th className="px-6 py-4 font-semibold">Status</th>
+                      <th className="px-6 py-4 font-semibold text-right">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredUsers.map(user => (
+                      <tr key={user.username} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">{user.username}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
+                            user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                            user.role === 'employer' ? 'bg-blue-100 text-blue-700' :
+                            'bg-amber-100 text-amber-700'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {user.role === 'worker' && user.serviceLevel && user.serviceLevel !== 'basic' && (
+                            <span className={`px-2 py-1 rounded border text-xs font-bold uppercase ${
+                              user.serviceLevel === 'elite' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                            }`}>
+                              {user.serviceLevel}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {user.isActive !== false ? (
+                            <span className="flex items-center gap-1 text-green-600 text-xs font-bold bg-green-50 px-2 py-1 rounded-full w-fit">
+                              <CheckCircle size={12} /> Active
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-red-600 text-xs font-bold bg-red-50 px-2 py-1 rounded-full w-fit">
+                              <XCircle size={12} /> Inactive
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {user.role !== 'admin' && (
+                            <button 
+                              onClick={() => toggleUserStatus(user.username)}
+                              className={`p-2 rounded-lg transition-colors ${
+                                user.isActive !== false 
+                                  ? 'bg-red-50 text-red-600 hover:bg-red-100' 
+                                  : 'bg-green-50 text-green-600 hover:bg-green-100'
+                              }`}
+                              title={user.isActive !== false ? "Deactivate User" : "Activate User"}
+                            >
+                              {user.isActive !== false ? <Lock size={16} /> : <Unlock size={16} />}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
 
         {activeTab === 'jobs' && (
           <div className="space-y-6 animate-in fade-in duration-300">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <h2 className="text-2xl font-bold text-gray-900">Job Management</h2>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
                 <input 
                   type="text" 
                   placeholder="Search jobs..." 
                   value={jobSearch}
                   onChange={e => setJobSearch(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-64"
+                  className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
                 />
               </div>
             </div>
 
             <div className="grid gap-4">
               {filteredJobs.map(job => (
-                <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between items-center">
+                <div key={job.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <h3 className="font-bold text-gray-900">{job.title}</h3>
                     <p className="text-sm text-gray-500">Employer: {job.employerUsername} • Status: {job.status}</p>
                     <p className="text-xs text-gray-400 mt-1">ID: {job.id}</p>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
                     <span className="font-bold text-blue-600">{job.budget} ₼</span>
                     <button 
                       onClick={() => deleteJob(job.id)}
@@ -352,43 +380,42 @@ export default function AdminPanel() {
           </div>
         )}
 
-        {/* ... (Other tabs remain similar, omitted for brevity but assumed present) ... */}
-        {/* Reusing existing tab logic for offers, reviews, messages, notifications, disputes, logs, advanced, settings */}
-        
         {activeTab === 'offers' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-2xl font-bold text-gray-900">All Offers</h2>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs">
-                  <tr>
-                    <th className="px-6 py-4 font-semibold">Job ID</th>
-                    <th className="px-6 py-4 font-semibold">Worker</th>
-                    <th className="px-6 py-4 font-semibold">Price</th>
-                    <th className="px-6 py-4 font-semibold">Status</th>
-                    <th className="px-6 py-4 font-semibold">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {jobs.flatMap(job => (job.applications || []).map(app => ({ ...app, jobId: job.id }))).map(app => (
-                    <tr key={app.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-mono text-xs text-gray-500">{app.jobId.slice(0, 8)}...</td>
-                      <td className="px-6 py-4 font-medium">{app.workerUsername}</td>
-                      <td className="px-6 py-4 text-blue-600 font-bold">{app.offeredPrice} ₼</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
-                          app.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                          app.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {app.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500 text-xs">{new Date(app.createdAt).toLocaleDateString()}</td>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold">Job ID</th>
+                      <th className="px-6 py-4 font-semibold">Worker</th>
+                      <th className="px-6 py-4 font-semibold">Price</th>
+                      <th className="px-6 py-4 font-semibold">Status</th>
+                      <th className="px-6 py-4 font-semibold">Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {jobs.flatMap(job => (job.applications || []).map(app => ({ ...app, jobId: job.id }))).map(app => (
+                      <tr key={app.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 font-mono text-xs text-gray-500">{app.jobId.slice(0, 8)}...</td>
+                        <td className="px-6 py-4 font-medium">{app.workerUsername}</td>
+                        <td className="px-6 py-4 text-blue-600 font-bold">{app.offeredPrice} ₼</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold uppercase ${
+                            app.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                            app.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {app.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-500 text-xs">{new Date(app.createdAt).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -429,27 +456,29 @@ export default function AdminPanel() {
             <h2 className="text-2xl font-bold text-gray-900">System Messages</h2>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="max-h-[600px] overflow-y-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3 font-semibold">From</th>
-                      <th className="px-6 py-3 font-semibold">Message</th>
-                      <th className="px-6 py-3 font-semibold">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {messages.map(msg => (
-                      <tr key={msg.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 font-medium">
-                          {msg.senderUsername} 
-                          <span className="text-xs text-gray-400 font-normal ml-1">({msg.from})</span>
-                        </td>
-                        <td className="px-6 py-3 text-gray-600 truncate max-w-xs">{msg.text}</td>
-                        <td className="px-6 py-3 text-xs text-gray-400">{new Date(msg.createdAt).toLocaleString()}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs sticky top-0">
+                      <tr>
+                        <th className="px-6 py-3 font-semibold">From</th>
+                        <th className="px-6 py-3 font-semibold">Message</th>
+                        <th className="px-6 py-3 font-semibold">Time</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {messages.map(msg => (
+                        <tr key={msg.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-3 font-medium">
+                            {msg.senderUsername} 
+                            <span className="text-xs text-gray-400 font-normal ml-1">({msg.from})</span>
+                          </td>
+                          <td className="px-6 py-3 text-gray-600 truncate max-w-xs">{msg.text}</td>
+                          <td className="px-6 py-3 text-xs text-gray-400">{new Date(msg.createdAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -460,26 +489,28 @@ export default function AdminPanel() {
             <h2 className="text-2xl font-bold text-gray-900">Notification Logs</h2>
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="max-h-[600px] overflow-y-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3 font-semibold">Recipient</th>
-                      <th className="px-6 py-3 font-semibold">Type</th>
-                      <th className="px-6 py-3 font-semibold">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {notifications.map(n => (
-                      <tr key={n.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-3 font-medium">{n.username}</td>
-                        <td className="px-6 py-3">
-                          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-mono">{n.type}</span>
-                        </td>
-                        <td className="px-6 py-3 text-xs text-gray-400">{new Date(n.createdAt).toLocaleString()}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm whitespace-nowrap">
+                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider text-xs sticky top-0">
+                      <tr>
+                        <th className="px-6 py-3 font-semibold">Recipient</th>
+                        <th className="px-6 py-3 font-semibold">Type</th>
+                        <th className="px-6 py-3 font-semibold">Time</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {notifications.map(n => (
+                        <tr key={n.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-3 font-medium">{n.username}</td>
+                          <td className="px-6 py-3">
+                            <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-mono">{n.type}</span>
+                          </td>
+                          <td className="px-6 py-3 text-xs text-gray-400">{new Date(n.createdAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
