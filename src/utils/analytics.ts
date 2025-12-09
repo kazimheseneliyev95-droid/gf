@@ -153,7 +153,7 @@ export const computeUserRiskMetrics = (users: User[], jobs: JobPost[], disputes:
   });
 };
 
-// --- 4. Financial & Pricing Analytics (NEW) ---
+// --- 4. Financial & Pricing Analytics ---
 
 export const getRevenueMetrics = (jobs: JobPost[]) => {
   const activeJobs = jobs.filter(j => j.status !== 'open'); // Count budget for active/completed
@@ -242,6 +242,114 @@ export const getTimeAnalytics = (jobs: JobPost[]) => {
   };
 };
 
+// --- 5. Automated Intelligence (NEW) ---
+
+export const generateAutomatedInsights = (jobs: JobPost[]) => {
+  const insights: { type: 'warning' | 'info' | 'success', message: string }[] = [];
+  
+  // 1. Pricing Anomalies
+  const pricing = getPricingAnalytics(jobs);
+  pricing.forEach(p => {
+    if (p.avgDeltaPercent > 15) {
+      insights.push({ 
+        type: 'warning', 
+        message: `Workers are charging ~${p.avgDeltaPercent.toFixed(0)}% above budget in ${p.category}.` 
+      });
+    } else if (p.avgDeltaPercent < -15) {
+      insights.push({ 
+        type: 'info', 
+        message: `Workers are undercutting budgets in ${p.category} by ~${Math.abs(p.avgDeltaPercent).toFixed(0)}%.` 
+      });
+    }
+  });
+
+  // 2. Slow Response Categories
+  const catPerf = computeCategoryPerformance(jobs, []); // reviews not needed for time
+  catPerf.forEach(c => {
+    if (c.avgFirstOfferMinutes && c.avgFirstOfferMinutes > 60 * 24) {
+      insights.push({
+        type: 'warning',
+        message: `Slow market: Avg time to first offer in ${c.category} is >24h.`
+      });
+    }
+  });
+
+  // 3. Low Conversion
+  const funnel = getFunnelStats(jobs);
+  if (funnel.conversion.toOffers < 30 && funnel.posted > 5) {
+    insights.push({
+      type: 'warning',
+      message: `Low engagement: Only ${funnel.conversion.toOffers.toFixed(0)}% of jobs receive offers.`
+    });
+  }
+
+  // 4. High Completion
+  if (funnel.conversion.toCompleted > 85 && funnel.accepted > 5) {
+    insights.push({
+      type: 'success',
+      message: `Strong finish rate: ${funnel.conversion.toCompleted.toFixed(0)}% of assigned jobs are completed successfully.`
+    });
+  }
+
+  return insights;
+};
+
+// --- 6. Schema Configuration (NEW) ---
+
+export const analyticsSchemas = {
+  users: {
+    label: "Users",
+    fields: [
+      { name: "username", type: "string" },
+      { name: "role", type: "enum", desc: "employer | worker | admin" },
+      { name: "isActive", type: "boolean" },
+      { name: "serviceLevel", type: "enum", desc: "basic | pro | elite" },
+      { name: "lastOnlineAt", type: "date" }
+    ]
+  },
+  jobs: {
+    label: "Jobs",
+    fields: [
+      { name: "title", type: "string" },
+      { name: "budget", type: "number" },
+      { name: "status", type: "enum", desc: "open | processing | completed" },
+      { name: "category", type: "string" },
+      { name: "applications", type: "array" },
+      { name: "createdAt", type: "date" }
+    ]
+  },
+  applications: {
+    label: "Offers",
+    fields: [
+      { name: "workerUsername", type: "string" },
+      { name: "offeredPrice", type: "number" },
+      { name: "status", type: "enum", desc: "pending | accepted | rejected" },
+      { name: "message", type: "string" },
+      { name: "createdAt", type: "date" }
+    ]
+  },
+  reviews: {
+    label: "Reviews",
+    fields: [
+      { name: "rating", type: "number", desc: "1-5" },
+      { name: "comment", type: "string" },
+      { name: "jobId", type: "string" },
+      { name: "workerUsername", type: "string" },
+      { name: "createdAt", type: "date" }
+    ]
+  },
+  messages: {
+    label: "Messages",
+    fields: [
+      { name: "sender", type: "string" },
+      { name: "text", type: "string" },
+      { name: "jobId", type: "string" },
+      { name: "isRead", type: "boolean" },
+      { name: "createdAt", type: "date" }
+    ]
+  }
+};
+
 // --- Legacy Exports ---
 
 export const getJobsByMonth = (jobs: JobPost[]) => {
@@ -256,12 +364,7 @@ export const getJobsByMonth = (jobs: JobPost[]) => {
     monthsMap[sortKey].posted++;
     
     if (job.status === 'completed' && job.completedAt) {
-      const cDate = new Date(job.completedAt);
-      const cSortKey = `${cDate.getFullYear()}-${String(cDate.getMonth() + 1).padStart(2, '0')}`;
-      // Note: Completed might fall in a different month, but for simplicity in this view we track based on creation month or just increment the bucket
-      // Better approach: Iterate months and count independently. 
-      // For now, let's just count completed jobs that were *created* in this month to show conversion speed, OR
-      // we can bucket by completion date. Let's stick to creation date for "Cohort" analysis.
+      // Note: Simplified logic for demo
       if (job.status === 'completed') monthsMap[sortKey].completed++;
     }
   });
@@ -303,7 +406,6 @@ export const getWorkerLeaderboard = (users: User[], jobs: JobPost[], reviews: Wo
     const myReviews = reviews.filter(r => r.workerUsername === w.username);
     const avgRating = myReviews.length ? myReviews.reduce((a,b) => a + b.rating, 0) / myReviews.length : 0;
     
-    // Simplified score
     const score = Math.min(100, (completed * 5) + (avgRating * 10));
 
     return {
@@ -311,7 +413,7 @@ export const getWorkerLeaderboard = (users: User[], jobs: JobPost[], reviews: Wo
       score,
       avgRating,
       completed,
-      acceptanceRate: 0, // Requires offer tracking
+      acceptanceRate: 0, 
       offersSubmitted: 0,
       offersAccepted: 0,
       offersRejected: 0,

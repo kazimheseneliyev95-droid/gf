@@ -3,16 +3,19 @@ import {
   Users, Briefcase, CheckCircle, Star, TrendingUp, 
   Filter, PieChart, Award, AlertCircle, Database, 
   ArrowDown, DollarSign, Clock, Activity, Layers,
-  BarChart2, Search, Download, ChevronDown, ChevronUp
+  BarChart2, Search, Download, ChevronDown, ChevronUp,
+  ArrowLeft, ArrowRight, ChevronRight, Info
 } from 'lucide-react';
 import { 
   User, JobPost, WorkerReview, JobMessage, Notification, JobCategory, JOB_CATEGORIES 
 } from '../types';
 import { 
-  filterByDate, getJobsByMonth, getOffersByCategory, getRatingsDistribution,
-  getWorkerLeaderboard, getEmployerLeaderboard, getFunnelStats, getPricingAnalytics, getTimeAnalytics,
-  getRevenueMetrics, getJobsByStatus, getRevenueByCategory
+  filterByDate, getJobsByMonth, getRatingsDistribution,
+  getFunnelStats, getPricingAnalytics, getTimeAnalytics,
+  getRevenueMetrics, getJobsByStatus, getRevenueByCategory,
+  generateAutomatedInsights, analyticsSchemas
 } from '../utils/analytics';
+import JobDetailsModal from './JobDetailsModal';
 
 interface AdminAnalyticsProps {
   users: User[];
@@ -30,11 +33,14 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
   const [dateRange, setDateRange] = useState<DateFilter>('all');
   const [selectedCategory, setSelectedCategory] = useState<JobCategory | 'All'>('All');
   const [activeTab, setActiveTab] = useState<AnalyticsTab>('dashboard');
-  const [showSchema, setShowSchema] = useState(false);
+  const [showSchema, setShowSchema] = useState(true);
   
   // Research Table State
-  const [jobSort, setJobSort] = useState<'date' | 'budget' | 'offers'>('date');
+  const [jobSort, setJobSort] = useState<'date' | 'budget' | 'offers' | 'title' | 'status'>('date');
   const [jobSortDir, setJobSortDir] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const [selectedJob, setSelectedJob] = useState<JobPost | null>(null);
 
   // --- Filtered Data ---
   const filteredJobs = useMemo(() => {
@@ -55,55 +61,56 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
   const statusCounts = useMemo(() => getJobsByStatus(filteredJobs), [filteredJobs]);
   const revenueByCat = useMemo(() => getRevenueByCategory(filteredJobs), [filteredJobs]);
   
-  const workerLeaderboard = useMemo(() => getWorkerLeaderboard(users, filteredJobs, reviews), [users, filteredJobs, reviews]);
-  const employerLeaderboard = useMemo(() => getEmployerLeaderboard(users, filteredJobs, reviews), [users, filteredJobs, reviews]);
-
-  const metrics = useMemo(() => {
-    const totalUsers = users.length;
-    const avgRating = filteredReviews.length > 0 
-      ? (filteredReviews.reduce((sum, r) => sum + r.rating, 0) / filteredReviews.length).toFixed(1)
-      : 'N/A';
-
-    return { totalUsers, avgRating, totalReviews: filteredReviews.length };
-  }, [users, filteredReviews]);
+  // --- Automated Insights ---
+  // NEW: rule-based automated insights using existing analytics data
+  const automatedInsights = useMemo(() => generateAutomatedInsights(filteredJobs), [filteredJobs]);
 
   // --- Charts Data ---
   const jobsOverTime = useMemo(() => getJobsByMonth(filteredJobs), [filteredJobs]);
-  const ratingsDist = useMemo(() => getRatingsDistribution(filteredReviews), [filteredReviews]);
-
-  // --- Insights Generator ---
-  const insights = useMemo(() => {
-    const list = [];
-    if (funnel.conversion.toOffers < 50) list.push(`Low offer rate: Only ${funnel.conversion.toOffers.toFixed(0)}% of jobs receive offers.`);
-    if (funnel.conversion.toCompleted > 80) list.push("High completion rate: Once assigned, jobs are very likely to complete.");
-    
-    const highPriceCat = pricing.find(p => p.avgDeltaPercent > 10);
-    if (highPriceCat) list.push(`Workers are charging >10% above budget in ${highPriceCat.category}.`);
-    
-    const lowPriceCat = pricing.find(p => p.avgDeltaPercent < -10);
-    if (lowPriceCat) list.push(`Workers are undercutting budgets in ${lowPriceCat.category} by >10%.`);
-
-    if (timeStats.avgTimeToFirstOfferHours > 24) list.push("Slow market: Avg time to first offer is over 24 hours.");
-
-    return list;
-  }, [funnel, pricing, timeStats]);
 
   // --- Helpers ---
-  const handleSort = (key: 'date' | 'budget' | 'offers') => {
+  const handleSort = (key: 'date' | 'budget' | 'offers' | 'title' | 'status') => {
     if (jobSort === key) setJobSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
     else { setJobSort(key); setJobSortDir('desc'); }
+    setCurrentPage(1); // Reset to first page on sort
   };
 
+  // UPDATED: enhanced Job Explorer with sorting, pagination, and drill-down
   const sortedJobsList = useMemo(() => {
     return [...filteredJobs].sort((a, b) => {
-      let valA, valB;
-      if (jobSort === 'budget') { valA = a.budget; valB = b.budget; }
-      else if (jobSort === 'offers') { valA = a.applications?.length || 0; valB = b.applications?.length || 0; }
-      else { valA = new Date(a.createdAt).getTime(); valB = new Date(b.createdAt).getTime(); }
+      let valA: any, valB: any;
       
-      return jobSortDir === 'asc' ? valA - valB : valB - valA;
+      switch(jobSort) {
+        case 'budget':
+          valA = a.budget; valB = b.budget;
+          break;
+        case 'offers':
+          valA = a.applications?.length || 0; valB = b.applications?.length || 0;
+          break;
+        case 'title':
+          valA = a.title.toLowerCase(); valB = b.title.toLowerCase();
+          break;
+        case 'status':
+          valA = a.status; valB = b.status;
+          break;
+        case 'date':
+        default:
+          valA = new Date(a.createdAt).getTime(); valB = new Date(b.createdAt).getTime();
+          break;
+      }
+      
+      if (valA < valB) return jobSortDir === 'asc' ? -1 : 1;
+      if (valA > valB) return jobSortDir === 'asc' ? 1 : -1;
+      return 0;
     });
   }, [filteredJobs, jobSort, jobSortDir]);
+
+  const paginatedJobs = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return sortedJobsList.slice(start, start + itemsPerPage);
+  }, [sortedJobsList, currentPage]);
+
+  const totalPages = Math.ceil(sortedJobsList.length / itemsPerPage);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 font-sans">
@@ -228,7 +235,6 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
                     <span className="block text-2xl font-bold text-gray-900">{filteredJobs.length}</span>
                     <span className="text-xs text-gray-500 uppercase">Total</span>
                   </div>
-                  {/* Simple CSS visualization of segments would be complex without a library, using list instead */}
                 </div>
               </div>
               <div className="space-y-3 mt-2">
@@ -299,52 +305,7 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
       {activeTab === 'research' && (
         <div className="space-y-8">
           
-          {/* 1. Pricing Intelligence Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                <DollarSign size={18} className="text-green-600" /> Pricing Intelligence
-              </h3>
-              <div className="text-xs text-gray-500">
-                Market analysis based on {filteredJobs.length} jobs
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold">
-                  <tr>
-                    <th className="px-6 py-3">Category</th>
-                    <th className="px-6 py-3">Avg Budget</th>
-                    <th className="px-6 py-3">Avg Accepted Price</th>
-                    <th className="px-6 py-3">Price Delta</th>
-                    <th className="px-6 py-3">Sample Size</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {pricing.map((p) => (
-                    <tr key={p.category} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">{p.category}</td>
-                      <td className="px-6 py-4 text-gray-500">{p.avgBudget.toFixed(0)} ₼</td>
-                      <td className="px-6 py-4 font-bold text-gray-900">{p.avgAccepted > 0 ? `${p.avgAccepted.toFixed(0)} ₼` : '-'}</td>
-                      <td className="px-6 py-4">
-                        {p.avgAccepted > 0 ? (
-                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                            p.avgDeltaPercent > 5 ? 'bg-red-100 text-red-700' : 
-                            p.avgDeltaPercent < -5 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                          }`}>
-                            {p.avgDeltaPercent > 0 ? '+' : ''}{p.avgDeltaPercent.toFixed(1)}%
-                          </span>
-                        ) : <span className="text-gray-400">-</span>}
-                      </td>
-                      <td className="px-6 py-4 text-gray-500">{p.jobCount} jobs</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 2. Detailed Job Explorer */}
+          {/* 1. Job Explorer (Upgraded) */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center">
               <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -354,27 +315,35 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
                 <button className="text-gray-400 hover:text-gray-600 p-1"><Download size={16} /></button>
               </div>
             </div>
-            <div className="overflow-x-auto max-h-[500px]">
+            <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-semibold sticky top-0 z-10">
                   <tr>
                     <th className="px-6 py-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('date')}>
                       Date {jobSort === 'date' && (jobSortDir === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-6 py-3">Title</th>
+                    <th className="px-6 py-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('title')}>
+                      Title {jobSort === 'title' && (jobSortDir === 'asc' ? '↑' : '↓')}
+                    </th>
                     <th className="px-6 py-3">Category</th>
                     <th className="px-6 py-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('budget')}>
                       Budget {jobSort === 'budget' && (jobSortDir === 'asc' ? '↑' : '↓')}
                     </th>
-                    <th className="px-6 py-3">Status</th>
+                    <th className="px-6 py-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('status')}>
+                      Status {jobSort === 'status' && (jobSortDir === 'asc' ? '↑' : '↓')}
+                    </th>
                     <th className="px-6 py-3 cursor-pointer hover:bg-gray-100" onClick={() => handleSort('offers')}>
                       Offers {jobSort === 'offers' && (jobSortDir === 'asc' ? '↑' : '↓')}
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedJobsList.slice(0, 50).map(job => (
-                    <tr key={job.id} className="hover:bg-gray-50">
+                  {paginatedJobs.map(job => (
+                    <tr 
+                      key={job.id} 
+                      className="hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => setSelectedJob(job)}
+                    >
                       <td className="px-6 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {new Date(job.createdAt).toLocaleDateString()}
                       </td>
@@ -401,34 +370,75 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
                       </td>
                     </tr>
                   ))}
+                  {paginatedJobs.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                        No jobs found matching current filters.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-            <div className="p-3 border-t border-gray-200 bg-gray-50 text-xs text-center text-gray-500">
-              Showing top 50 jobs based on current filters
+            
+            {/* Pagination Controls */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-xs text-gray-600">
+              <span>Showing {paginatedJobs.length} of {sortedJobsList.length} jobs</span>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ArrowLeft size={14} />
+                </button>
+                <span className="font-medium">Page {currentPage} of {totalPages || 1}</span>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <ArrowRight size={14} />
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* 3. Automated Insights */}
+          {/* 2. Automated Intelligence (Upgraded) */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100">
             <h3 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
               <AlertCircle size={20} /> Automated Intelligence
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {insights.length > 0 ? (
-                insights.map((text, idx) => (
-                  <div key={idx} className="flex items-start gap-3 bg-white/60 p-3 rounded-lg">
-                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                    <p className="text-sm text-blue-800 font-medium">{text}</p>
+              {automatedInsights.length > 0 ? (
+                automatedInsights.map((insight, idx) => (
+                  <div key={idx} className={`flex items-start gap-3 p-3 rounded-lg border ${
+                    insight.type === 'warning' ? 'bg-amber-50 border-amber-100' :
+                    insight.type === 'success' ? 'bg-green-50 border-green-100' :
+                    'bg-white/60 border-white'
+                  }`}>
+                    <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
+                      insight.type === 'warning' ? 'bg-amber-500' :
+                      insight.type === 'success' ? 'bg-green-500' :
+                      'bg-blue-500'
+                    }`} />
+                    <p className={`text-sm font-medium ${
+                      insight.type === 'warning' ? 'text-amber-900' :
+                      insight.type === 'success' ? 'text-green-900' :
+                      'text-blue-900'
+                    }`}>{insight.message}</p>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-gray-500 italic">Gathering more data to generate insights...</p>
+                <div className="col-span-2 flex items-center gap-2 text-gray-500 italic bg-white/50 p-4 rounded-lg">
+                  <CheckCircle size={16} className="text-green-500" />
+                  No significant anomalies detected with current filters.
+                </div>
               )}
             </div>
           </div>
 
-          {/* 4. Schema (Collapsible) */}
+          {/* 3. Data Schema & Models (Dynamic) */}
           <div className="border border-gray-200 rounded-xl overflow-hidden">
             <button 
               onClick={() => setShowSchema(!showSchema)}
@@ -441,17 +451,42 @@ export default function AdminAnalytics({ users, jobs, reviews, messages, notific
             </button>
             
             {showSchema && (
+              // UPDATED: Data Schema & Models now renders dynamically from analyticsSchemas config
               <div className="p-6 bg-white grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 animate-in slide-in-from-top-2">
-                <SchemaCard title="Users" fields={['username', 'role', 'isActive']} count={users.length} color="blue" />
-                <SchemaCard title="Jobs" fields={['title', 'budget', 'status', 'category']} count={jobs.length} color="purple" />
-                <SchemaCard title="Applications" fields={['worker', 'price', 'status']} count={funnel.withOffers} color="indigo" />
-                <SchemaCard title="Reviews" fields={['rating', 'comment', 'jobId']} count={reviews.length} color="amber" />
-                <SchemaCard title="Messages" fields={['sender', 'text', 'isRead']} count={messages.length} color="green" />
+                {Object.entries(analyticsSchemas).map(([key, schema]) => {
+                  // Calculate dynamic counts based on props
+                  let count = 0;
+                  if (key === 'users') count = users.length;
+                  if (key === 'jobs') count = jobs.length;
+                  if (key === 'applications') count = funnel.withOffers; // Approx
+                  if (key === 'reviews') count = reviews.length;
+                  if (key === 'messages') count = messages.length;
+
+                  return (
+                    <SchemaCard 
+                      key={key}
+                      title={schema.label} 
+                      fields={schema.fields} 
+                      count={count} 
+                      color={['blue', 'purple', 'indigo', 'amber', 'green'][Math.floor(Math.random() * 5)]} 
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
 
         </div>
+      )}
+
+      {/* Drill-down Modal */}
+      {selectedJob && (
+        <JobDetailsModal 
+          isOpen={!!selectedJob}
+          onClose={() => setSelectedJob(null)}
+          job={selectedJob}
+          viewerRole="employer" // Admin views as employer for now to see details
+        />
       )}
     </div>
   );
@@ -514,6 +549,7 @@ const StatusRow = ({ label, count, total, color }: any) => (
 );
 
 const SchemaCard = ({ title, fields, count, color }: any) => {
+  const [expanded, setExpanded] = useState(false);
   const colors: any = {
     blue: 'border-t-blue-500',
     purple: 'border-t-purple-500',
@@ -522,19 +558,30 @@ const SchemaCard = ({ title, fields, count, color }: any) => {
     green: 'border-t-green-500'
   };
 
+  const displayFields = expanded ? fields : fields.slice(0, 3);
+
   return (
-    <div className={`bg-white p-4 rounded-lg shadow-sm border border-gray-200 border-t-4 ${colors[color]}`}>
-      <div className="flex justify-between items-center mb-2">
+    <div className={`bg-white p-4 rounded-lg shadow-sm border border-gray-200 border-t-4 ${colors[color] || 'border-t-gray-500'} hover:shadow-md transition-shadow`}>
+      <div className="flex justify-between items-center mb-3">
         <h4 className="font-bold text-gray-800">{title}</h4>
-        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-500">{count}</span>
+        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 font-mono">{count}</span>
       </div>
-      <div className="space-y-1">
-        {fields.map((f: string) => (
-          <div key={f} className="text-xs text-gray-500 font-mono bg-gray-50 px-1.5 py-0.5 rounded w-fit">
-            {f}
+      <div className="space-y-1.5">
+        {displayFields.map((f: any) => (
+          <div key={f.name} className="flex justify-between items-center text-xs">
+            <span className="text-gray-600 font-medium">{f.name}</span>
+            <span className="text-gray-400 font-mono text-[10px]">{f.type}</span>
           </div>
         ))}
       </div>
+      {fields.length > 3 && (
+        <button 
+          onClick={() => setExpanded(!expanded)}
+          className="w-full mt-3 text-[10px] text-blue-600 hover:text-blue-800 font-medium flex items-center justify-center gap-1 pt-2 border-t border-gray-50"
+        >
+          {expanded ? 'Show Less' : `View ${fields.length - 3} more`} <ChevronRight size={10} className={`transition-transform ${expanded ? '-rotate-90' : 'rotate-90'}`} />
+        </button>
+      )}
     </div>
   );
 };
